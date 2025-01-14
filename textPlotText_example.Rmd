@@ -32,8 +32,9 @@ library(tidyverse)
 library(text)
 
 reticulate::source_python("fullStopCorrt.py")
+reticulate::source_python("get_subword_sign.py")
 source(
-  "r-text_misc/textPlotText_test.R", # plotting functions
+  "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
 
@@ -62,6 +63,7 @@ if (FALSE){
   .rs.restartR()
 }
 print(toString(data[1, "harmonytexts"]))
+data <- data[1:40,c("harmonytexts", "hilstotal")]
 ```
 
 # Get embeddings
@@ -82,7 +84,9 @@ toTrain <- addSentenceEmbeddings(embed1, tokenizer, nameLLM,
                       includeCLSSEP="both" # Keep the CLS and SEP special token as well.
 )
 ```
-
+```{r Separate sents, echo=TRUE}
+temp <- getTokensTb(toTrain, data[2:40, "hilstotal"], tokenizer, nameLLM)
+```
 
 # Train a model to predict the target
 
@@ -104,7 +108,7 @@ theModels <- readRDS("model.rds")
 
 # Use the model to predict new texts
 ```{r Get embed of pred texts and predict, echo=TRUE}
-toPredEmbed <- textEmbed(data[1:10,"harmonytexts"],
+toPredEmbed <- textEmbed(data[1,"harmonytexts"],
                          model=nameLLM,
                          dim_name=FALSE, device="gpu")
 ```
@@ -113,7 +117,7 @@ toPredEmbed <- textEmbed(data[1:10,"harmonytexts"],
 # Plot preparation
 
 ```{r Plot_preparation, echo=TRUE}
-toPred <- addSentenceEmbeddings(toPredEmbed, tokenizer, nameLLM, include_CLS_SEP="both")
+toPred <- addSentenceEmbeddings(toPredEmbed, tokenizer, nameLLM, includeCLSSEP="both")
 output <- langPred(toPred, theModels, "all", tokenizer, nameLLM)
 output <- list("Pred" = output, "model" = theModels)
 output <- getLangColorTb(output)

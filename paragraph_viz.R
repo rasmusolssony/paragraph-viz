@@ -261,97 +261,53 @@ correctGram <- function(aTibble = NULL) {
 
 
 #### token process ####
-#' TBD: Delete the token level [CLS] & [SEP]
-#' @param aTibble (list of tibbles) List of the token tibble of each obs.
-#' @return The Tb with [CLS] & [SEP] deleted
+
+#' Check if token is the start of a word.
+#' @param token (str) The token to check.
+#' @param subword_sign (str) The sign used as the split among subwords.
+#' @return A boolean value.
 #' @noRd
-delToken_CLS_SEP <- function(aTibble) {
-  return(NULL)
+is_word_start <- function(token, subword_sign = "##") {
+  if(subword_sign == "##") {
+    return(!startsWith(token, subword_sign))
+  } else if (subword_sign == "Ġ") {
+    return(startsWith(token, subword_sign))
+  } else if (subword_sign == "▁") {
+    return(!startsWith(token, subword_sign))
+  } else {
+    stop("The subword sign is not supported!")
+  }
 }
+
 #' Get the rowIDs of tokens having split sign "##" only for BERT models.
-#' @param tokensTb (tibble) The tokens tibble.
+#' @param tokens (tibble) The tokens tibble.
 #' @param modelName (str) The pre-trained model name in the transformers hub.
 #' @param signSubWord (str) The sign used as the split among subwords. The default is "##" for BERT.
 #' @importFrom dplyr select
 #' @importFrom magrittr %>% %in%
 #' @return The rowIDs tibbles.
 #' @noRd
-getIDsSubWord <- function(tokensTb, modelName, signSubWord = "##") {
-  model_family <- get_model_family(modelName)
-  CLSSEP <- get_cls_sep_tokens(model_family)
-  if (model_family == MODEL_FAMILIES$ROBERTA) {
-    signSubWord <- "Ġ"
-  }
-  numSubTokens <- grep(signSubWord, tokensTb$tokens) %>% tibble::as_tibble()
-  if (nrow(numSubTokens) != 0) {
-    if (model_family == MODEL_FAMILIES$BERT) {
-      temp <- matrix(nrow = nrow(numSubTokens), ncol = 3) %>%
-        as.data.frame() %>%
-        tibble::as_tibble()
-      numSubTokens <- cbind(numSubTokens[, 1], temp)
-      numSubTokens[, 2:4] <- 0
-      numSubTokens <- numSubTokens %>% tibble::as_tibble()
-      colnames(numSubTokens)[1:4] <- c("index", "endID", "sRow", "eRow")
-      for (index in (nrow(numSubTokens) - 1) %>% seq_len()) {
-        if (numSubTokens[["index"]][index + 1] -
-          numSubTokens[["index"]][index] != 1) {
-          numSubTokens[["endID"]][index] <- 1
-        }
-      }
-      numSubTokens[["endID"]][nrow(numSubTokens)] <- 1
-      numSubTokens[["sRow"]][1] <- numSubTokens[["index"]][1] - 1
-      # && numSubTokens[["eRow"]][index - 1] == 0
-      if (nrow(numSubTokens) == 1) {
-        numSubTokens[["sRow"]][1] <- numSubTokens[["index"]][1] - 1
-        numSubTokens[["eRow"]][1] <- numSubTokens[["index"]][1]
-      } else {
-        for (index in nrow(numSubTokens) %>% seq_len()) {
-          if (index == 1) {
-            next
-          }
-          if (numSubTokens[["endID"]][index] == 0 && numSubTokens[["sRow"]][index - 1] != 0
-          ) {
-            numSubTokens[["sRow"]][index] <- numSubTokens[["index"]][index] - 1
-          } else if (numSubTokens[["endID"]][index] == 0 &&
-            numSubTokens[["endID"]][index - 1] == 0) {
-            numSubTokens[["sRow"]][index] <- numSubTokens[["sRow"]][index - 1]
-          } else if (numSubTokens[["endID"]][index] == 1 &&
-            numSubTokens[["endID"]][index - 1] == 1) {
-            numSubTokens[["sRow"]][index] <- numSubTokens[["index"]][index] - 1
-            numSubTokens[["eRow"]][index] <- numSubTokens[["index"]][index]
-          } else {
-            numSubTokens[["sRow"]][index] <- numSubTokens[["sRow"]][index - 1]
-            numSubTokens[["eRow"]][index] <- numSubTokens[["index"]][index]
-          }
-        }
-      }
-      numSubTokens <- numSubTokens %>%
-        dplyr::filter(., endID == 1) %>%
-        dplyr::select(., sRow, eRow)
-    } else if (CLSSEP$RoBERTa) {
-      return(numSubTokens)
-    } else {
-      numSubTokens <- "NA"
-    }
-  } else {
-    numSubTokens <- "NA"
-  }
+getIDsSubWord <- function(tokens, modelName, signSubWord = "##") {
+  # Mark the start of each word.
+  word_starts <- sapply(tokens, is_word_start, get_subword_sign(modelName))
 
-  return(numSubTokens)
+  # Generate a tibble for processing
+  subword_tibble <- tibble::tibble(
+    index = seq_along(tokens),
+    tokens = tokens,
+    is_start = word_starts
+  )
+
+  # Identify start and end indices of words
+  result <- subword_tibble %>%
+    mutate(group = cumsum(is_start)) %>%
+    group_by(group) %>%
+    summarize(sRow = min(index), eRow = max(index), .groups = "drop") %>%
+    select(sRow, eRow)
+    
+  return(result)
 }
-#' Transform the subwords row wise.
-#' @param startIDRow (numeric) The start rowID of subwords.
-#' @param endIDRow (numeric) The end rowID of subwords.
-#' @param tokensTb (tibble) The tokens tibble.
-#' @param tokenizers (R_obj) The tokenizer in use.
-#' @param modelName (str) The transformer model in use.
-#' @return The tranformed tokensTb.
-#' @noRd
-# convertSubWord_rowWise <- function(startIDRow, endIDRow, tokensTb, tokenizers, modelName){
-#     theWord <- decodeToken(tokensTb[startIDRow:endIDRow], tokenizers, modelname)
-#     tokensTb[startIDRow:endIDRow] <- theWord
-#     return (tokensTb)
-# }
+
 #' Transform the subwords back to words based on the input of function getIDsSubWord.
 #' @param tokensTb (tibble) The tokens tibble.
 #' @param numSubTokens (tibble) The output of function getIDsSubWord.
@@ -361,119 +317,64 @@ getIDsSubWord <- function(tokensTb, modelName, signSubWord = "##") {
 #' @return The tranformed tokens tibble without subword tokens.
 #' @noRd
 convertSubWord <- function(tokensTb, numSubTokens, tokenizers, modelName) {
-  model_family <- get_model_family(modelName)
-  CLSSEP <- get_cls_sep_tokens(model_family)
-  if (!is.character(numSubTokens)) {
-    if (model_family == MODEL_FAMILIES$BERT) {
-      for (rowNo in numSubTokens %>%
-        nrow() %>%
-        seq_len()) {
-        theWord <- decodeToken(
-          tokensTb[["tokens"]][numSubTokens[["sRow"]][rowNo]:numSubTokens[["eRow"]][rowNo]],
-          tokenizers, modelName
-        )
-        tokensTb[["tokens"]][numSubTokens[["sRow"]][rowNo]:numSubTokens[["eRow"]][rowNo]] <- theWord
-      }
-    } else if (model_family == MODEL_FAMILIES$ROBERTA) {
-      for (rowNo in numSubTokens %>%
-        nrow() %>%
-        seq_len()) {
-        theWord <- decodeToken(
-          tokensTb[["tokens"]][numSubTokens[[1]][rowNo]],
-          tokenizers, modelName
-        )
-        theWord <- trimws(theWord) # remove the leading space caused by the RoBERTa tokenizer
-        tokensTb[["tokens"]][numSubTokens[[1]][rowNo]] <- theWord
-      }
-    } else {
-      return(tokensTb)
-    }
-  } else {
-    return(tokensTb)
-    # roberta & bert tokenizer are non-subscriptable. No parallel computing available here.
-    # tokensTb[["tokens"]][1:length(tokensTb[["tokens"]])] <- furrr::future_pmap(
-    # list(
-    #     tokensTb[["tokens"]],
-    #     tokenizers,
-    #     modelName
-    # ),
-    # decodeToken
-    # )
-  }
+  if (is.null(numSubTokens)) return(tokensTb)
 
+  for (row in seq_len(nrow(numSubTokens))) {
+    start <- numSubTokens$sRow[row]
+    end <- numSubTokens$eRow[row]
+    # Decode the subword tokens to words
+    combined_word <- 
+      decodeToken(tokensTb$tokens[start:end], tokenizers, modelName)
+    # Trim potential whitespaces
+    combined_word <- trimws(combined_word)
+    # Replace the inital subword with the combined word and set the rest to NA
+    tokensTb$tokens[start:end] <- combined_word
+    # Set the words embeddings to the average of the subwords embeddings.
+    # TODO: Investigate if this is should be done for all models
+    if(end - start > 1) {
+      tokensTb[start, 3:ncol(tokensTb)] <-
+        colMeans(tokensTb[start:end, 3:ncol(tokensTb)])
+    }
+  }
+  tokensTb <- tokensTb %>% tidyr::drop_na(tokens)
   return(tokensTb)
 }
-#' Get the trainable Tb of tokens row wise
-#' @param tokensTb_row (tibble) The tokens in each observation
-#' @param target_row (float) The target value
-#' @param tokenizers (RObj) The tokenizers to use;
-#' @param modelName (str) The model name of transformers in use;
-#' @return The Tb aligned
-#' @noRd
-getTokenTb_eleWise <- function(tokensTb_row, target_row) {
-  if (!is.null(target_row)) {
-    # tokensTb_row <- tokensTb_row %>% tibble::tibble()
-    targetTb_row <- matrix(nrow = tokensTb_row %>% nrow(), ncol = 1) %>%
-      as.data.frame() %>%
-      tibble::as_tibble()
-    names(targetTb_row)[1] <- c("target")
-    targetTb_row[["target"]] <- target_row
-    targetTb_row <- cbind(targetTb_row, tokensTb_row)
-  } else {
-    return(tokensTb_row)
-  }
 
-  return(targetTb_row)
-}
 #' Get the trainable Tb of tokens.
-#' @param aTibble (Tibble) Embeddings from text::textEmbed();
-#' @param x (Tibble) The tibble of prediction target;
-#' @param tokenizers (RObj) The tokenizers to use;
-#' @param modelName (str) The model name of transformers in use;
+#' @param aTibble (Tibble) Embeddings from text::textEmbed()
+#' @param x (Tibble) The tibble of prediction target
+#' @param tokenizers (RObj) The tokenizers to use
+#' @param modelName (str) The model name of transformers in use
+#' @param combineSubwords (boolean) To combine the subwords or not.
+#' The default is TRUE.
 #' @importFrom furrr future_pmap_dfr
 #' @importFrom dplyr group_by summarise
 #' @return The Tb aligned.
 #' @noRd
-getTokensTb <- function(aTibble,
-                        x = NULL,
-                        tokenizers,
-                        modelName) {
+getTokensTb <- function(aTibble, x = NULL, tokenizers,
+                        modelName, combineSubwords = TRUE) {
   model_family <- get_model_family(modelName)
   CLSSEP <- get_cls_sep_tokens(model_family)
-  # tokensTb, 1 col target, 1 col tokens across observations, and the embedding cols.
-  if (!is.null(x)) {
+
+  # Combine tokens and targets
+  if(!is.null(x)) {
     tokensTb <- furrr::future_pmap_dfr(
-      list(
-        aTibble[["tokens"]][[1]],
-        x[[1]]
-        # tokenizers %>% list(),
-        # modelName %>% list()
-      ),
-      getTokenTb_eleWise
+      list(aTibble[["tokens"]][[1]], x[[1]]),
+      function(tokens, target) {
+        cbind(target = target, tokens)
+      }
     )
-  } else {
-    tokensTb <- aTibble[["tokens"]][[1]][[1]]
+  } else{
+    tokensTb <- aTibble[["tokens"]][[1]][[1]] #TODO: Investigate why this is needed
   }
+  # Filter out special tokens (CLS, SEP, etc.)
   tokensTb <- tokensTb %>% dplyr::filter(tokens != CLSSEP$CLS)
   tokensTb <- tokensTb %>% dplyr::filter(tokens != CLSSEP$SEP)
-  # Convert the subword tokens for BERT and RoBERTa families. Future can be set FALSE.
-  if (TRUE) {
-    numSubTokens <- getIDsSubWord(tokensTb, modelName)
+
+  # Combine subwords into words.
+  if (combineSubwords) {
+    numSubTokens <- getIDsSubWord(tokensTb[["tokens"]], modelName)
     tokensTb <- convertSubWord(tokensTb, numSubTokens, tokenizers, modelName)
-  }
-  if (!is.null(x)) {
-    tokensTb <- cbind(tokensTb[, 2], tokensTb[, 1], tokensTb[, 3:ncol(tokensTb)])
-    colnames(tokensTb)[1:2] <- c("tokens", "target")
-    # average embeddings across identical tokens for BERT tokens only
-    if (model_family == MODEL_FAMILIES$BERT) {
-      tokensTb <- tokensTb %>%
-        dplyr::group_by(tokens) %>%
-        dplyr::summarise(across(colnames(tokensTb)[2]:colnames(tokensTb)[ncol(tokensTb)], mean))
-      #    tokensTb <- cbind(tokensTb[,2], tokensTb[,1], tokensTb[,3:ncol(tokensTb)])
-      #    colnames(tokensTb)[1:2] <- c("target", "tokens")
-    }
-    tokensTb <- cbind(tokensTb[, 2], tokensTb[, 1], tokensTb[, 3:ncol(tokensTb)])
-    colnames(tokensTb)[1:2] <- c("target", "tokens")
   }
 
   return(tokensTb)
@@ -547,7 +448,7 @@ getCLSSEPTokenRows <- function(tokenEmbeddings, modelName) {
 #' @NoRd
 initSentenceTibble <- function(tokenEmbeddings, modelName) {
   # Get the rows for CLS and SEP tokens
-  clsSepRows <- token2Sent_rowCLSSEP(tokenEmbeddings, modelName)
+  clsSepRows <- getCLSSEPTokenRows(tokenEmbeddings, modelName)
 
   # Initialize a new tibble for sentences
   sentenceTibble <- matrix(nrow = nrow(clsSepRows), 
@@ -821,7 +722,6 @@ langTrain_tokens <- function(trainObj, x, tokenizers, modelName) {
     x = tokensTb[, 3:ncol(tokensTb)],
     y = tokensTb[, 1]
   )
-
   return(theModelTokens)
 }
 #' langTrain_sent
@@ -898,7 +798,6 @@ langTrain <- function(trainObj, x, lang_level = "all", tokenizers, modelName) {
     theModelTokens <- future::value(modelingTokens)
     theModelSents <- future::value(modelingSents)
     theModelParas <- future::value(modelingParas)
-
     return(list(
       "modelTokens" = theModelTokens,
       "modelSents" = theModelSents,
@@ -1157,18 +1056,9 @@ getOutDf <- function(outObj, modelName) {
   # outTb sent info
   for (rowNo in start:end) {
     marker <- outObj[["coloredTb"]][["sentNo"]][rowNo]
-    print("---------------")
-    print("Marker")
-    print(marker)
     marker <- which(outObj[["coloredTb"]][["sentNo"]] == marker)
-    print("Marker which")
-    print(marker)
     marker_1 <- marker[1]
     marker_2 <- marker[length(marker) - 1]
-    print("Marker 1")
-    print(marker_1)
-    print("Marker 2")
-    print(marker_2)
     outTb[["sentPred"]][marker_1:marker_2] <- outObj[["coloredTb"]][["preds"]][rowNo]
     outTb[["sentColor"]][marker_1:marker_2] <- outObj[["coloredTb"]][["colorCode"]][rowNo]
   }
