@@ -1,0 +1,160 @@
+---
+title: "example PlotFuncs"
+author: "AlexGu at Lund University"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+options(warn = -1)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This tutorial will use the <b><big>Language_based_assessment_data_8</big></b> in Text package to generate a plot.
+
+# Import packages and functions
+
+```{r import the plotting functions, echo=TRUE}
+if (FALSE) {
+  # install packages needed for punctuation restoring. In a future Text version, this is not necessary.
+  reticulate::conda_install(envname = "textrpp_condaenv", c("protobuf", "sentencepiece"), forge = FALSE, pip = TRUE)
+}
+
+library(tidyverse)
+library(text)
+library(topics)
+
+reticulate::source_python("r-text_misc/fullStopCorrt.py")
+source(
+  "r-text_misc/textPlotText_test.R", # plotting functions
+  encoding = localeToCharset()
+)
+
+# supported models: bert, roberta base models
+nameLLM <- MODEL_NAMES$BERT$BASE_UNCASED
+tokenizers <- getTokenizer(nameLLM)
+```
+
+# Import data
+
+```{r data import, echo=TRUE}
+data <- dep_wor_data
+text_set <- "Deptext"
+scale_total <- "PHQ9tot"
+data_length <- 500
+
+print(nrow(data)) # should be max data_length number of records
+```
+# Restore punctuations 
+
+```{r restore punctuations, echo=TRUE}
+# Choose harmonytexts as the visualization target in this example.
+source(
+  "r-text_misc/textPlotText_test.R", # plotting functions
+  encoding = localeToCharset()
+)
+data <- data[, c(text_set, scale_total)]
+# Only needed if one finds the missing of puncuations in the text.
+# !!!! After running this code, a restart of the R console is needed. Plan to fix in the future.
+if (TRUE) {
+  data[, text_set] <- sentsMarker(data[, text_set])
+  rs.restartR()
+}
+#data[1, "Deptext"] <- paste(data[1, "Deptext"], ".", sep = "", collapse = NULL)
+print(toString(data[1, "Deptext"]))
+```
+
+# Get embeddings
+
+```{r get embed, echo=TRUE}
+embed1 <- textEmbed(
+  data[2:data_length, text_set],
+  model = nameLLM,
+  device = "gpu", # cpu, gpu, mps
+  dim_name = FALSE # For prediction of new texts, this param must be FALSE
+)
+```
+# Separate sentences
+
+```{r Separate sents, echo=TRUE}
+options(future.globals.maxSize = 2.0 * 1e9)
+toTrain <- addSentenceEmbeddings(embed1, tokenizers, nameLLM,
+  include_CLS_SEP = "both" # Keep the CLS and SEP special token as well.
+)
+```
+
+
+# Train a model to predict the target
+
+```{r regression, echo=TRUE}
+theModels <- langTrain(toTrain, # embedding
+  data[2:data_length, scale_total], # scale values, target
+  "all", # options: "token", "sentence", "passage", "all", # "all" include all the previous models
+  tokenizers,
+  modelName = nameLLM
+)
+```
+
+```{r save the regression model, echo=TRUE}
+# Save the models for future use since the training is a bit slow.
+#saveRDS(theModels, paste0("model_topics.rds"))
+theModels <- readRDS("model_topics.rds")
+```
+
+# Use the model to predict new texts
+```{r Get embed of pred texts and predict, echo=TRUE}
+toPredEmbed <- textEmbed(data[1, text_set],
+  model = nameLLM,
+  dim_name = FALSE, device = "gpu"
+)
+```
+
+
+# Plot preparation
+
+```{r Plot_preparation, echo=TRUE}
+toPred <- addSentenceEmbeddings(toPredEmbed, tokenizers, nameLLM, include_CLS_SEP = "both")
+output <- langPred(toPred, theModels, "all", tokenizers, nameLLM)
+output <- list("Pred" = output, "model" = theModels)
+output <- getLangColorTb(output)
+toPlot <- getOutDf(output, nameLLM)
+```
+
+# Plot the default plot
+
+```{r Plot, echo=TRUE}
+plot1 <- textPlotText(toPlot, list("all"), textColor = "black", modelName = nameLLM)
+
+plot1
+```
+
+# Custom the color of the plot
+
+```{r Change the color of the plot, echo=TRUE}
+cusColVecRGB <- list(list(10, 50, 100), list(130, 180, 230)) # 0-255; from lower to higher
+# Default list(list(243,249,246), list(253, 247, 244))
+
+toPlot_cusRGB <- cusPlotText(toPlot, cusColVecRGB, "RGB", restore = FALSE, nameLLM)
+
+plot2 <- textPlotText(toPlot_cusRGB, list("all"), textColor = "black", modelName = nameLLM)
+
+plot2
+```
+
+# Restore the plot to the default color
+
+```{r Restore the color to default, echo=TRUE}
+toPlot_ori <- cusPlotText(toPlot_cusRGB, restore = TRUE, modelName = nameLLM)
+
+plot3 <- textPlotText(toPlot_ori, list("all"), textColor = "black", modelName = nameLLM)
+
+plot3
+```
+
+
