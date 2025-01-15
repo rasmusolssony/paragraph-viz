@@ -56,7 +56,7 @@ get_cls_sep_tokens <- function(model_family) {
 #' @return A list of sentences
 #' @noRd
 punctuate_text <- function(str) {
-  return(fullstopCorrt(str))
+  return(reticulate::fullstopCorrt(str))
 }
 #' Punctuates a list of strings in a tibble.
 #' @param texts (tibble) The tibble contains a list of 
@@ -65,8 +65,8 @@ punctuate_text <- function(str) {
 #' @return A tibble of the list of sentences
 #' @noRd
 punctuateTexts <- function(texts) {
-  if (!is.null(aTibble)) {
-    text_vector <- as.character(aTibble[[1]])
+  if (!is.null(texts)) {
+    text_vector <- as.character(texts[[1]])
 
     output <- furrr::future_pmap(
       list(text_vector), punctuate_text
@@ -146,6 +146,21 @@ getTokenizer <- function(modelName) {
   return(output)
 }
 
+# TODO: Decide if we want a wrapper function like this or if we want
+# to resturcture the code to allow different texts to be used at the
+# same time.
+createEmbeddings <- function(texts, modelName, device, dim_name, includeCLSSEP) {
+  embeddings = text:: textEmbed(
+    texts = texts,
+    model = modelName,
+    device = device,
+    dim_name = dim_name
+  )
+  embeddings[["tokens"]] <- embeddings[["tokens"]][[1]]
+  embeddings = addSentenceEmbeddings(embeddings, modelName, includeCLSSEP)
+  embeddings[["texts"]] <- embeddings[["texts"]][[1]]
+  return(embeddings)
+}
 
 #' Transform the subword tokens back to words,
 #' by first transforming the tokens to ids and then back to words.
@@ -174,82 +189,6 @@ decodeToken <- function(aStringList, tokenizers, modelName) {
   return(output)
 }
 
-#' Grammar correction to form a complete sentence for easier textViz rowwise.
-#' @param aString (string) The input string
-#' @param corrector (R_obj) The corrector from transformer
-#' @return A string after grammar correction
-#' @noRd
-correctGram_rowwise <- function(aString = NULL, corrector) {
-  #  && aString %>% is.character(.)
-  if (!aString %>% is.null(.)) {
-    output <- corrector(aString)[[1]][[1]]
-  } else {
-    print("The string input is not available! Pls check the data!")
-    return("NA")
-  }
-
-  return(output)
-}
-#' Experimental:: Grammar correction to form a complete sentence for easier textViz.
-#' @param aTibble (tibble) The input tibble containing only multiple strings, the first column.
-#' @importFrom reticulate import py_module_available
-#' @importFrom furrr future_pmap
-#' @importFrom tibble as_tibble
-#' @return A tibble after string correction.
-#' @noRd
-correctGram <- function(aTibble = NULL) {
-  # 'pszemraj/grammar-synthesis-small' # correct minor symbolic issues
-  # "pszemraj/t5-v1_1-base-ft-jflAUG"  # correct major semantic issues
-  corModel1 <- "pszemraj/grammar-synthesis-small"
-  corModel2 <- "pszemraj/t5-v1_1-base-ft-jflAUG"
-
-  if (!reticulate::py_module_available("transformers")) {
-    reticulate::py_install("transformers")
-  }
-  if (!is.null(aTibble)) {
-    transformers_obj <- reticulate::import("transformers")
-    pipeline_obj <- transformers_obj$pipeline
-    if (TRUE) {
-      corrector1 <- pipeline_obj(
-        "text2text-generation",
-        corModel1
-      )
-      transformers_obj <- NULL
-      pipeline_obj <- NULL
-      output <- furrr::future_pmap(
-        list(
-          aTibble %>% as.vector(),
-          corrector1 %>% list()
-        ), correctGram_rowwise
-      )
-    }
-    if (FALSE) {
-      corrector2 <- pipeline_obj(
-        "text2text-generation",
-        corModel2
-      )
-      transformers_obj <- NULL
-      pipeline_obj <- NULL
-      output <- furrr::future_pmap(
-        list(
-          aTibble %>% as.vector(),
-          corrector2 %>% list()
-        ), correctGram_rowwise
-      )
-    }
-  }
-  if (!is.null(output)) {
-    output <- output %>%
-      as.data.frame(.) %>%
-      t(.) %>%
-      tibble::as_tibble(.)
-    return(output)
-  } else {
-    return(NULL)
-  }
-}
-
-
 #### token process ####
 
 #' Check if token is the start of a word.
@@ -272,14 +211,15 @@ is_word_start <- function(token, subword_sign = "##") {
 #' Get the rowIDs of tokens having split sign "##" only for BERT models.
 #' @param tokens (tibble) The tokens tibble.
 #' @param modelName (str) The pre-trained model name in the transformers hub.
-#' @param signSubWord (str) The sign used as the split among subwords. The default is "##" for BERT.
+#' The default is "##" for BERT.
 #' @importFrom dplyr select
 #' @importFrom magrittr %>% %in%
 #' @return The rowIDs tibbles.
 #' @noRd
-getIDsSubWord <- function(tokens, modelName, signSubWord = "##") {
+getSubWordIDs <- function(tokens, modelName) {
   # Mark the start of each word.
-  word_starts <- sapply(tokens, is_word_start, get_subword_sign(modelName))
+  word_starts <- sapply(tokens, is_word_start, 
+                        reticulate::get_subword_sign(modelName))
 
   # Generate a tibble for processing
   subword_tibble <- tibble::tibble(
@@ -292,82 +232,89 @@ getIDsSubWord <- function(tokens, modelName, signSubWord = "##") {
   result <- subword_tibble %>%
     mutate(group = cumsum(is_start)) %>%
     group_by(group) %>%
-    summarize(sRow = min(index), eRow = max(index), .groups = "drop") %>%
-    select(sRow, eRow)
-    
+    summarize(start_row = min(index), end_row = max(index),
+              .groups = "drop") %>%
+    select(start_row, end_row)
+
   return(result)
 }
 
-#' Transform the subwords back to words based on the input of function getIDsSubWord.
-#' @param tokensTb (tibble) The tokens tibble.
-#' @param numSubTokens (tibble) The output of function getIDsSubWord.
-#' @param tokenizers (R_obj) The tokenizer in use.
+#' Combine the subwords back to words based on the input
+#' of function getIDsSubWord.
+#' @param tokens (tibble) The tokens tibble.
+#' @param subwordIDs (tibble) The output of function getIDsSubWord.
+#' @param tokenizer (R_obj) The tokenizer in use.
 #' @param modelName (str) The transformer model in use.
 #' @importFrom furrr future_pmap
 #' @return The tranformed tokens tibble without subword tokens.
 #' @noRd
-convertSubWord <- function(tokensTb, numSubTokens, tokenizers, modelName) {
-  if (is.null(numSubTokens)) return(tokensTb)
+combineSubWords <- function(tokens, subwordIDs, tokenizer, modelName) {
+  if (is.null(subwordIDs)) return(tokens)
 
-  for (row in seq_len(nrow(numSubTokens))) {
-    start <- numSubTokens$sRow[row]
-    end <- numSubTokens$eRow[row]
+  for (row in seq_len(nrow(subwordIDs))) {
+    start <- subwordIDs$start_row[row]
+    end <- subwordIDs$end_row[row]
     # Decode the subword tokens to words
-    combined_word <- 
-      decodeToken(tokensTb$tokens[start:end], tokenizers, modelName)
+    combined_word <-
+      decodeToken(tokens$tokens[start:end], tokenizer, modelName)
     # Trim potential whitespaces
     combined_word <- trimws(combined_word)
     # Replace the inital subword with the combined word and set the rest to NA
-    tokensTb$tokens[start:end] <- combined_word
+    tokens$tokens[start:end] <- combined_word
     # Set the words embeddings to the average of the subwords embeddings.
     # TODO: Investigate if this is should be done for all models
     if(end - start > 1) {
-      tokensTb[start, 3:ncol(tokensTb)] <-
-        colMeans(tokensTb[start:end, 3:ncol(tokensTb)])
+      tokens[start, 3:ncol(tokens)] <-
+        colMeans(tokens[start:end, 3:ncol(tokens)])
     }
   }
-  tokensTb <- tokensTb %>% tidyr::drop_na(tokens)
-  return(tokensTb)
+  # Remove rows with NA tokens (i.e., former subwords)
+  tokens <- tokens %>% tidyr::drop_na(tokens)
+  return(tokens)
 }
 
 #' Get the trainable Tb of tokens.
-#' @param aTibble (Tibble) Embeddings from text::textEmbed()
-#' @param x (Tibble) The tibble of prediction target
-#' @param tokenizers (RObj) The tokenizers to use
+#' @param embeddings (Tibble) Embeddings from text::textEmbed()
+#' @param targets (Tibble) The tibble of prediction target
+#' @param tokenizer (RObj) The tokenizers to use
 #' @param modelName (str) The model name of transformers in use
 #' @param combineSubwords (boolean) To combine the subwords or not.
 #' The default is TRUE.
 #' @importFrom furrr future_pmap_dfr
 #' @importFrom dplyr group_by summarise
-#' @return The Tb aligned.
+#' @return The aligned tibble.
 #' @noRd
-getTokensTb <- function(aTibble, x = NULL, tokenizers,
-                        modelName, combineSubwords = TRUE) {
+getTrainableTokens <- function(embeddings, targets = NULL,
+                               modelName, combineSubwords = TRUE) {
   model_family <- get_model_family(modelName)
-  CLSSEP <- get_cls_sep_tokens(model_family)
+  cls_sep_tokens <- get_cls_sep_tokens(model_family)
+
+  tokenizer <- getTokenizer(modelName)
 
   # Combine tokens and targets
-  if(!is.null(x)) {
-    tokensTb <- furrr::future_pmap_dfr(
-      list(aTibble[["tokens"]][[1]], x[[1]]),
+  if(!is.null(targets)) {
+    tokenTibble <- furrr::future_pmap_dfr(
+      list(embeddings[["tokens"]], targets[[1]]),
       function(tokens, target) {
         cbind(target = target, tokens)
       }
     )
   } else{
-    tokensTb <- aTibble[["tokens"]][[1]][[1]] #TODO: Investigate why this is needed
+    #TODO: Fix better solution for this
+    tokenTibble <- embeddings[["tokens"]][[1]]
   }
   # Filter out special tokens (CLS, SEP, etc.)
-  tokensTb <- tokensTb %>% dplyr::filter(tokens != CLSSEP$CLS)
-  tokensTb <- tokensTb %>% dplyr::filter(tokens != CLSSEP$SEP)
+  tokenTibble <- tokenTibble %>% dplyr::filter(tokens != cls_sep_tokens$CLS)
+  tokenTibble <- tokenTibble %>% dplyr::filter(tokens != cls_sep_tokens$SEP)
 
   # Combine subwords into words.
   if (combineSubwords) {
-    numSubTokens <- getIDsSubWord(tokensTb[["tokens"]], modelName)
-    tokensTb <- convertSubWord(tokensTb, numSubTokens, tokenizers, modelName)
+    subword_ids <- getSubWordIDs(tokenTibble[["tokens"]], modelName)
+    tokenTibble <- combineSubWords(tokenTibble, subword_ids,
+                                   tokenizer, modelName)
   }
 
-  return(tokensTb)
+  return(tokenTibble)
 }
 
 #### sentence process ####
@@ -415,10 +362,10 @@ getCLSSEPTokenRows <- function(tokenEmbeddings, modelName) {
   }
 
   # Get tibbles with the row numbers of the tokens "[CLS]" and "[SEP]"
-  rowCLS <- 
+  rowCLS <-
     which(tokenEmbeddings[["tokens"]] == clsSepTokens$CLS, arr.ind = TRUE) %>%
     tibble::as_tibble()
-  rowSEP <- 
+  rowSEP <-
     which(tokenEmbeddings[["tokens"]] == clsSepTokens$SEP, arr.ind = TRUE) %>%
     tibble::as_tibble()
 
@@ -611,19 +558,16 @@ removeSpecialTokenColumns <- function(sentenceEmbeddings) {
 #' @return A list containing token embeddings of the function textEmbed()
 #'  along with sentence embeddings.
 #' @NoRd
-addSentenceEmbeddings <- function(tokenList, tokenizer,
+addSentenceEmbeddings <- function(embeddings,
                                   modelName = "bert-base-uncased",
                                   includeCLSSEP = "both") {
-  # Ensure the tokenizer has the necessary attributes
-  if (!reticulate::py_has_attr(tokenizer, "convert_tokens_to_ids") ||
-        !reticulate::py_has_attr(tokenizer, "decode")) {
-    tokenizer <- getTokenizer(modelName)
-  }
+
+  tokenizer <- getTokenizer(modelName)
 
   # Generate sentence embeddings
   sentenceEmbeddings <- furrr::future_pmap(
     list(
-      tokenList[["tokens"]][[1]] %>% as.vector(),
+      embeddings[["tokens"]] %>% as.vector(),
       tokenizer %>% list(),
       modelName,
       includeCLSSEP
@@ -639,162 +583,149 @@ addSentenceEmbeddings <- function(tokenList, tokenizer,
     removeSpecialTokenColumns
   )
 
-  # Combine sentence embeddings into a single tibble
-  combinedSentenceEmbeddings <- do.call(rbind, lapply(sentenceEmbeddings,
-                                                      tibble::as_tibble))
-
   # Append the combined sentence embeddings to the original list
   embeddings <- append(
-    tokenList,
-    list("sentences" = list(
-      "texts" = sentenceEmbeddings, "sentence_tb" = combinedSentenceEmbeddings
-    )), 1
-  )
+    embeddings, 
+    list("sentences" = lapply(sentenceEmbeddings, tibble::as_tibble)))
 
   return(embeddings)
 }
 
-#' Get the predition tibble rowwise of sentences
-#' @param rowTb Each row of the original list
-#' @param yValue Row value of the prediction target
-#' @return A row ready for prediction
-#' @NoRd
-getSentsPredTb_row <- function(rowTb, yValue) {
-  return(cbind(yValue, rowTb))
-}
-#' Get the tibble of sentence embeddings and their prediction targets.
-#' @param PredictTb The input from token2Sent.
-#' @param y The numeric variable to predict.
+#' Get the trainable tibble of sentences.
+#' @param embeddings The output from addSentenceEmbeddings.
+#' @param targets The targets to predict.
 #' @importFrom furrr future_pmap_dfr
 #' @return The tibble of sentence embeddings.
 #' @NoRd
-getSentsPredTb <- function(PredictTb, y) {
-  PredTb <- furrr::future_pmap_dfr(
-    list(PredictTb, y %>% unlist()),
-    getSentsPredTb_row
-  )
-  return(PredTb)
-}
-#### passage process ####
-#' Get the predition of passage of each row
-#' @param PredPasg_row (tibble) An individual row of embeddings.
-#' @param y_row (numeric) The prediction target.
-#' @importFrom furrr pmap
-#' @NoRd
-getPasgPredTb_row <- function() {
-  return(NULL)
+getTrainableSentences <- function(embeddings, targets) {
+  if(!is.null(targets)) {
+    sentenceTibble <- furrr::future_pmap_dfr(
+      list(embeddings[["sentences"]], targets[[1]]),
+      function(sentences, target) {
+        cbind(target = target, sentences)
+      }
+    )
+  }
+  return(sentenceTibble)
 }
 
-#' Get the prediction of sentences
-#' @param textEmbeds (R obj) The output of textEmbed()
-#' @param y (vector) The target to predict
+#### Paragraph processing ####
+
+#' Get the trainable tibble of paragraphs.
+#' @param embeddings (R obj) The output of textEmbed()
+#' @param targets (vector) The targets to predict
 #' @import furrr furrr_pmap
 #' @return The trained model of passages and their prediction targets.
 #' @NoRd
-getPasgPredTb <- function(textEmbeds, y) {
-  pasgData <- cbind(y, textEmbeds[["texts"]][["texts"]])
+getTrainableParagraphs <- function(embeddings, targets) {
+  if(!is.null(targets)) {
+    paragraphTibble <- cbind(targets, embeddings[["texts"]]) %>%
+      tibble::as_tibble()
+  }
 
-  return(pasgData)
+  return(paragraphTibble)
 }
 
-#### key training functions
-#' langTrain_token
-#' @param trainObj The tibble of token embeddings
-#' @param x The tibble, The prediction target
-#' @param tokenizers (R_obj) The tokenizers in use
+#### Training functions
+
+#' Train the language model for tokens
+#' @param embeddings The tibble of token embeddings
+#' @param targets The tibble, The prediction target
+#' @param tokenizer (R_obj) The tokenizers in use
 #' @param modelName (str) The model name in use
-#' @retrun the trained model
+#' @retrun The trained model
 #' @NoRd
-langTrain_tokens <- function(trainObj, x, tokenizers, modelName) {
-  # need a element-wise list func
-  tokensTb <- getTokensTb(trainObj, x, tokenizers, modelName) %>% tibble::as_tibble()
-  theModelTokens <- textTrain( # textTrainRegression(
-    x = tokensTb[, 3:ncol(tokensTb)],
-    y = tokensTb[, 1]
+trainTokenLanguageModel <- function(embeddings, targets, 
+                                    modelName) {
+  # Get the trainable tokens
+  tokenTibble <- getTrainableTokens(embeddings, targets,
+                                    modelName) %>%
+    tibble::as_tibble()
+  # Train the model
+  tokenModel <- textTrain(
+    x = tokenTibble[, 3:ncol(tokenTibble)],
+    y = tokenTibble[, 1]
   )
-  return(theModelTokens)
+
+  return(tokenModel)
 }
-#' langTrain_sent
-#' @param trainObj The tibble of sentence embeddings
-#' @param x The prediction target
+#' Train the language model for sentences
+#' @param embeddings The tibble of sentence embeddings
+#' @param targets The prediction target
 #' @return the trained model
 #' @NoRd
-langTrain_sents <- function(trainObj, x) {
-  sentsTrainTb <- getSentsPredTb(
-    trainObj[["sentences"]][["texts"]],
-    x # Language_based_assessment_data_8$hilstotal
+trainSentenceLanguageModel <- function(embeddings, targets) {
+  sentenceTibble <- getTrainableSentences(
+    embeddings,
+    targets
   ) %>% tibble::as_tibble()
 
-  theModelSents <- textTrain( # textTrainRegression(
-    x = sentsTrainTb[, 3:ncol(sentsTrainTb)],
-    y = sentsTrainTb[, 1]
+  sentenceModel <- textTrain(
+    x = sentenceTibble[, 3:ncol(sentenceTibble)],
+    y = sentenceTibble[, 1]
   )
 
-  return(theModelSents)
+  return(sentenceModel)
 }
-#' Get the models of training
-#' @param trainObj (R_obj) An R obj containing the information of "token", "sentence",  and "paragraph".
-#' @param x (R_obj) The training target.
-#' @param lang_level (str) "token", "sentence", "passage", "all". The default is "all".
+
+trainParagraphLanguageModel <- function(embeddings, targets) {
+  paragraphTibble <- getTrainableParagraphs(embeddings, targets)
+  paragraphModel <- text::textTrain(
+    x = paragraphTibble[, 2:ncol(paragraphTibble)],
+    y = paragraphTibble[, 1]
+  )
+  return(paragraphModel)
+}
+
+#' Train the language model.
+#' @param embeddings (R_obj) An R obj containing the information of 
+#' "token", "sentence",  and "paragraph".
+#' @param targets (R_obj) The training target.
+#' @param languageLevel (str) "token", "sentence", "paragraph" or "all".
+#'  The default is "all".
 #' @param tokenizers (R_obj) The tokenizer in use.
 #' @param modelName (str) The transformer model in use.
 #' @importFrom future future value
 #' @return The trained model
 #' @NoRd
-langTrain <- function(trainObj, x, lang_level = "all", tokenizers, modelName) {
-  if (lang_level == "token") {
-    theModelTokens <- langTrain_tokens(trainObj, x, tokenizers, modelName)
+trainLanguageModel <- function(embeddings, targets, languageLevel = "all",
+                               tokenizer, modelName) {
+  if (languageLevel == "token") {
+    tokenModel <- trainTokenLanguageModel(embeddings, targets,
+                                          modelName)
 
-    return(list("modelTokens" = theModelTokens))
-  } else if (lang_level == "sentence") {
-    theModelSents <- langTrain_sents(trainObj, x)
-    return(list("modelSents" = theModelSents))
-  } else if (lang_level == "paragraph") {
-    parasTb <- cbind(
-      x, # Language_based_assessment_data_8$hilstotal
-      trainObj[["texts"]][[1]]
-    ) %>% tibble::as_tibble()
-    theModelParas <- textTrainRegression(
-      x = parasTb[, 2:ncol(parasTb)],
-      y = parasTb[, 1]
-    )
-    return(list("modelParas" = theModelParas))
+    return(list("modelTokens" = tokenModel))
+  } else if (languageLevel == "sentence") {
+    sentenceModel <- trainSentenceLanguageModel(embeddings, targets)
+    return(list("modelSents" = sentenceModel))
+  } else if (languageLevel == "paragraph") {
+    paragraphModel <- trainParagraphLanguageModel(embeddings, targets)
+    return(list("modelParas" = paragraphModel))
   } else {
-    modelingTokens <- future::future(
-      {
-        langTrain_tokens(trainObj, x, tokenizers, modelName)
-      },
-      seed = NULL
-    )
-    modelingSents <- future::future(
-      {
-        langTrain_sents(trainObj, x)
-      },
-      seed = NULL
-    )
-    parasTb <- cbind(
-      x, # Language_based_assessment_data_8$hilstotal
-      trainObj[["texts"]][[1]]
-    ) %>% tibble::as_tibble()
-    modelingParas <- future::future(
-      {
-        textTrain( # textTrainRegression(
-          x = parasTb[, 2:ncol(parasTb)],
-          y = parasTb[, 1]
-        )
-      },
-      seed = NULL
-    )
-    theModelTokens <- future::value(modelingTokens)
-    theModelSents <- future::value(modelingSents)
-    theModelParas <- future::value(modelingParas)
+    futureTokenModel <-
+      future::future(trainTokenLanguageModel(embeddings, targets,
+                                             modelName),
+                     seed = NULL)
+    futureSentenceModel <-
+      future::future(trainSentenceLanguageModel(embeddings, targets),
+                     seed = NULL)
+    futureParagraphModel <-
+      future::future(trainParagraphLanguageModel(embeddings, targets),
+                     seed = NULL)
+
+    tokenModel <- future::value(futureTokenModel)
+    sentenceModel <- future::value(futureSentenceModel)
+    paragraphModel <- future::value(futureParagraphModel)
     return(list(
-      "modelTokens" = theModelTokens,
-      "modelSents" = theModelSents,
-      "modelParas" = theModelParas
+      "modelTokens" = tokenModel,
+      "modelSents" = sentenceModel,
+      "modelParas" = paragraphModel
     ))
   }
 }
+
+#### Prediction functions
+
 #' langPred_tokens
 #' Get the tokens prediction
 #' @param predObj An R obj containing the information of "token", "sentence",  and "passage".
@@ -806,18 +737,18 @@ langTrain <- function(trainObj, x, lang_level = "all", tokenizers, modelName) {
 langPred_tokens <- function(predObj, tokensModel, tokenizers, modelName) {
   # output the irregular tokens in LLMs.
   if (TRUE) {
-    predObj[["tokens"]][[1]][[1]] <- predObj %>%
-      getTokensTb(., x = NULL, tokenizers, modelName) %>%
+    predObj[["tokens"]] <- predObj %>%
+      getTrainableTokens(., targets = NULL, modelName) %>%
       tibble::as_tibble()
   }
 
   tokensPred <- text::textPredict(
     tokensModel,
-    predObj[["tokens"]][[1]][[1]][, 2:ncol(predObj[["tokens"]][[1]][[1]])]
+    predObj[["tokens"]][, 2:ncol(predObj[["tokens"]])]
   )
   tokensPred <- tokensPred %>% tibble::as_tibble()
   colnames(tokensPred)[1] <- c("y_pred")
-  tokensPred <- cbind(tokensPred, predObj[["tokens"]][[1]][[1]])
+  tokensPred <- cbind(tokensPred, predObj[["tokens"]])
   return(tokensPred)
 }
 #' langPred_sents
@@ -829,10 +760,10 @@ langPred_tokens <- function(predObj, tokensModel, tokenizers, modelName) {
 langPred_sents <- function(predObj, sentsModel) {
   sentsPred <- text::textPredict(
     sentsModel,
-    predObj[["sentences"]][["sentence_tb"]][, 2:ncol(predObj[["sentences"]][["sentence_tb"]])]
+    predObj[["sentences"]][[1]][, 2:ncol(predObj[["sentences"]][[1]])]
   )
   names(sentsPred) <- c("y_pred")
-  sentsPred <- cbind(sentsPred, predObj[["sentences"]][["sentence_tb"]])
+  sentsPred <- cbind(sentsPred, predObj[["sentences"]][[1]])
 
   return(sentsPred)
 }
@@ -843,7 +774,7 @@ langPred_sents <- function(predObj, sentsModel) {
 #' @NoRd
 langPred_paras <- function(predObj, parasModel) {
   parasPred <- text::textPredict(parasModel,
-    predObj[[3]][[1]], # 3 = paragraph, labeled texts
+    predObj[[3]], # 3 = paragraph, labeled texts
     dim_names = FALSE
   )
 
@@ -942,7 +873,7 @@ getLangColorTb <- function(embedObj) {
   end <- nrow(embedObj[["Pred"]][["predTokens"]]) + nrow(embedObj[["Pred"]][["predSents"]])
   coloredTb[start:end, 2:3] <- embedObj[["Pred"]][["predSents"]][, 1:2]
   coloredTb[start:end, 4] <- "sents"
-  coloredTb[nrow(coloredTb), 2] <- embedObj[["Pred"]][["predParas"]][[1]][1]
+  coloredTb[nrow(coloredTb), 2] <- embedObj[["Pred"]][["predParas"]][1]
   coloredTb[nrow(coloredTb), 3] <- "Lorem Ipsum"
   coloredTb[nrow(coloredTb), 4] <- "paras"
   coloredTb <- coloredTb %>% tibble::rowid_to_column(., "ID")
@@ -1149,14 +1080,14 @@ textProjectionText <- function(
     )
     toTrainProc <- future::future(
       {
-        textsTrain %>% addSentenceEmbeddings(., tokenizers, modelName, include_CLS_SEP)
+        textsTrain %>% addSentenceEmbeddings(., modelName, include_CLS_SEP)
       },
       seed = NULL
     )
     toPred <- future::value(toPredEmbedProc)
     toPredProc <- future::future(
       {
-        toPred %>% addSentenceEmbeddings(., tokenizers, modelName, include_CLS_SEP)
+        toPred %>% addSentenceEmbeddings(., modelName, include_CLS_SEP)
       },
       seed = NULL
     )
@@ -1178,7 +1109,7 @@ textProjectionText <- function(
   # results <- textTrainRegression(
   #     x = sentsTrainTb[,3:ncol(sentsTrainTb)],
   #     y = sentsTrainTb[,1])
-  theModels <- langTrain(toTrain, x, "all", tokenizers, modelName)
+  theModels <- trainLanguageModel(toTrain, x, "all", tokenizers, modelName)
 
   #### 4. Use trained model to predict the input
   output <- langPred(toPred, theModels, "all")

@@ -63,37 +63,40 @@ if (FALSE){
   .rs.restartR()
 }
 print(toString(data[1, "harmonytexts"]))
-data <- data[1:40,c("harmonytexts", "hilstotal")]
+data <- data[1:11,c("harmonytexts", "hilstotal")]
 ```
 
 # Get embeddings
 
 ```{r get embed, echo=TRUE}
-embed1 <- textEmbed(
-                    data[2:40, "harmonytexts"],
+embed1 <- createEmbeddings(
+                    data[2:11, "harmonytexts"],
                     model=nameLLM,
                     device = "gpu", # cpu, gpu, mps
-                    dim_name = FALSE # For prediction of new texts, this param must be FALSE
+                    dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
+                    "both"
 )
 ```
 # Separate sentences
-
 ```{r Separate sents, echo=TRUE}
-
-toTrain <- addSentenceEmbeddings(embed1, tokenizer, nameLLM,
-                      includeCLSSEP="both" # Keep the CLS and SEP special token as well.
-)
+#print(as.vector(data[2:11, "hilstotal"]))
 ```
 ```{r Separate sents, echo=TRUE}
-temp <- getTokensTb(toTrain, data[2:40, "hilstotal"], tokenizer, nameLLM)
+
+#toTrain <- addSentenceEmbeddings(embed1, tokenizer, nameLLM,
+#                      includeCLSSEP="both" # Keep the CLS and SEP special token as well.
+#)
+```
+```{r Separate sents, echo=TRUE}
+#temp <- getTrainableTokens(toTrain, data[2:11, "hilstotal"], tokenizer, nameLLM)
 ```
 
 # Train a model to predict the target
 
 ```{r regression, echo=TRUE}
 
-theModels <- langTrain(toTrain, # embedding
-                       data[2:40, "hilstotal"], # scale values, target
+theModels <- trainLanguageModel(embed1, # embedding
+                       data[2:11, "hilstotal"], # scale values, target
                        "all", # options: "token", "sentence", "passage", "all", # "all" include all the previous models
                        tokenizer,
                        modelName = nameLLM
@@ -103,28 +106,32 @@ theModels <- langTrain(toTrain, # embedding
 ```{r save the regression model, echo=TRUE}
 # Save the models for future use since the training is a bit slow.
 #saveRDS(theModels, paste0("model.rds"))
-theModels <- readRDS("model.rds")
+#theModels <- readRDS("model.rds")
 ```
 
 # Use the model to predict new texts
 ```{r Get embed of pred texts and predict, echo=TRUE}
-toPredEmbed <- textEmbed(data[1,"harmonytexts"],
+toPredEmbed <- createEmbeddings(data[1,"harmonytexts"],
                          model=nameLLM,
-                         dim_name=FALSE, device="gpu")
+                         dim_name=FALSE, 
+                         device="gpu",
+                         includeCLSSEP="both")
 ```
 
 
 # Plot preparation
 
 ```{r Plot_preparation, echo=TRUE}
-toPred <- addSentenceEmbeddings(toPredEmbed, tokenizer, nameLLM, includeCLSSEP="both")
-output <- langPred(toPred, theModels, "all", tokenizer, nameLLM)
+output <- langPred(toPredEmbed, theModels, "all", tokenizer, nameLLM)
+
+```
+
+```{r Plot_preparation, echo=TRUE}
 output <- list("Pred" = output, "model" = theModels)
 output <- getLangColorTb(output)
 toPlot <- getOutDf(output, nameLLM)
 
 ```
-
 # Plot the default plot
 
 ```{r Plot, echo=TRUE}
