@@ -174,16 +174,6 @@ decodeToken <- function(aStringList, tokenizers, modelName) {
   return(output)
 }
 
-#' Experimental:: Split a text into sentences.
-#' @param string The input string.
-#' @importFrom reticulate import
-#' @return A list of sentences.
-#' @NoRd
-# splitSent <- function(string){
-#     nltk <- import("nltk")
-#     return (nltk$tokenize$sent_tokenize(string) %>% reticulate::py_to_r())
-# }
-
 #' Grammar correction to form a complete sentence for easier textViz rowwise.
 #' @param aString (string) The input string
 #' @param corrector (R_obj) The corrector from transformer
