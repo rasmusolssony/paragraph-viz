@@ -120,7 +120,7 @@ toPredEmbed <- textEmbed(data[1, text_set],
 
 ```{r Plot_preparation, echo=TRUE}
 toPred <- addSentenceEmbeddings(toPredEmbed, tokenizers, nameLLM, include_CLS_SEP = "both")
-output <- langPred(toPred, theModels, "all", tokenizers, nameLLM)
+output <- predictLanguage(toPred, theModels, "all", tokenizers, nameLLM)
 output <- list("Pred" = output, "model" = theModels)
 output <- getLangColorTb(output)
 toPlot <- getOutDf(output, nameLLM)

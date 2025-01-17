@@ -40,6 +40,7 @@ source(
 
 # supported models: bert, roberta base models
 nameLLM <- "bert-base-uncased"
+sign <- get_subword_sign(nameLLM)
 tokenizer <- getTokenizer(nameLLM)
 ```
 
@@ -63,32 +64,19 @@ if (FALSE){
   .rs.restartR()
 }
 print(toString(data[1, "harmonytexts"]))
-data <- data[1:11,c("harmonytexts", "hilstotal")]
+data <- data[1:40,c("harmonytexts", "hilstotal")]
 ```
 
 # Get embeddings
 
 ```{r get embed, echo=TRUE}
 embed1 <- createEmbeddings(
-                    data[2:11, "harmonytexts"],
+                    data[2:40, "harmonytexts"],
                     model=nameLLM,
                     device = "gpu", # cpu, gpu, mps
                     dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
                     "both"
 )
-```
-# Separate sentences
-```{r Separate sents, echo=TRUE}
-#print(as.vector(data[2:11, "hilstotal"]))
-```
-```{r Separate sents, echo=TRUE}
-
-#toTrain <- addSentenceEmbeddings(embed1, tokenizer, nameLLM,
-#                      includeCLSSEP="both" # Keep the CLS and SEP special token as well.
-#)
-```
-```{r Separate sents, echo=TRUE}
-#temp <- getTrainableTokens(toTrain, data[2:11, "hilstotal"], tokenizer, nameLLM)
 ```
 
 # Train a model to predict the target
@@ -96,11 +84,11 @@ embed1 <- createEmbeddings(
 ```{r regression, echo=TRUE}
 
 theModels <- trainLanguageModel(embed1, # embedding
-                       data[2:11, "hilstotal"], # scale values, target
-                       "all", # options: "token", "sentence", "passage", "all", # "all" include all the previous models
+                       data[2:40, "hilstotal"], # scale values, target
+                       "paragraph", # options: "token", "sentence", "passage", "all", # "all" include all the previous models
                        tokenizer,
                        modelName = nameLLM
-                      )
+)
 ```
 
 ```{r save the regression model, echo=TRUE}
@@ -111,6 +99,10 @@ theModels <- trainLanguageModel(embed1, # embedding
 
 # Use the model to predict new texts
 ```{r Get embed of pred texts and predict, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
 toPredEmbed <- createEmbeddings(data[1,"harmonytexts"],
                          model=nameLLM,
                          dim_name=FALSE, 
@@ -122,8 +114,37 @@ toPredEmbed <- createEmbeddings(data[1,"harmonytexts"],
 # Plot preparation
 
 ```{r Plot_preparation, echo=TRUE}
-output <- langPred(toPredEmbed, theModels, "all", tokenizer, nameLLM)
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+output <- predictLanguage(toPredEmbed, theModels, "all", tokenizer, nameLLM)
+```
 
+```{r Plot_preparation, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+print(output)
+```
+
+```{r Plot_preparation, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+colored <- createColoredTibble(output, limits = c(7, 49))
+```
+
+```{r Plot_preparation, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+
+plot <- generateDocument(colored, toPredEmbed, nameLLM)
+plot
 ```
 
 ```{r Plot_preparation, echo=TRUE}
