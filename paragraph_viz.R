@@ -239,8 +239,8 @@ combineSubWords <- function(tokens, subwordIDs, tokenizer, modelName) {
 #' @noRd
 getTrainableTokens <- function(embeddings, targets = NULL,
                                modelName, combineSubwords = TRUE) {
-  model_family <- get_model_family(modelName)
-  cls_sep_tokens <- get_cls_sep_tokens(model_family)
+  start_token <- get_start_token(modelName)
+  end_token <- get_end_token(modelName)
 
   tokenizer <- getTokenizer(modelName)
 
@@ -257,8 +257,8 @@ getTrainableTokens <- function(embeddings, targets = NULL,
     tokenTibble <- embeddings[[1]]
   }
   # Filter out special tokens (CLS, SEP, etc.)
-  tokenTibble <- tokenTibble %>% dplyr::filter(tokens != cls_sep_tokens$CLS)
-  tokenTibble <- tokenTibble %>% dplyr::filter(tokens != cls_sep_tokens$SEP)
+  tokenTibble <- tokenTibble %>% dplyr::filter(tokens != start_token)
+  tokenTibble <- tokenTibble %>% dplyr::filter(tokens != end_token)
 
   # Combine subwords into words.
   if (combineSubwords) {
@@ -303,23 +303,21 @@ getStartAndEndRow <- function(includeCLSSEP, rowCLS, rowSEP) {
 #' @NoRd
 getCLSSEPTokenRows <- function(tokenEmbeddings, modelName) {
 
-  # Get the model family and the CLS/SEP tokens
-  modelFamily <- get_model_family(modelName)
-  clsSepTokens <- get_cls_sep_tokens(modelFamily)
+  # Get the start and end tokens
+  start_token <- get_start_token(modelName)
+  end_token <- get_end_token(modelName)
 
   # Check if the input model is supported
-  if (is.null(modelFamily)) {
-    print("Your input model is not supported.\n 
-      Please try bert or roberta families.")
-    return(NULL)
+  if (is.null(start_token) || is.null(end_token)) {
+    stop("Start and/or end token not supported!")
   }
 
   # Get tibbles with the row numbers of the tokens "[CLS]" and "[SEP]"
   rowCLS <-
-    which(tokenEmbeddings[["tokens"]] == clsSepTokens$CLS, arr.ind = TRUE) %>%
+    which(tokenEmbeddings[["tokens"]] == start_token, arr.ind = TRUE) %>%
     tibble::as_tibble()
   rowSEP <-
-    which(tokenEmbeddings[["tokens"]] == clsSepTokens$SEP, arr.ind = TRUE) %>%
+    which(tokenEmbeddings[["tokens"]] == end_token, arr.ind = TRUE) %>%
     tibble::as_tibble()
 
   # Combine the tibbles of row numbers
@@ -549,7 +547,7 @@ addSentenceEmbeddings <- function(embeddings,
 getTrainableSentences <- function(embeddings, targets) {
   if(!is.null(targets)) {
     sentenceTibble <- furrr::future_pmap_dfr(
-      list(embeddings[["sentences"]], targets[[1]]),
+      list(embeddings, targets[[1]]),
       function(sentences, target) {
         cbind(target = target, sentences)
       }
@@ -568,7 +566,7 @@ getTrainableSentences <- function(embeddings, targets) {
 #' @NoRd
 getTrainableParagraphs <- function(embeddings, targets) {
   if(!is.null(targets)) {
-    paragraphTibble <- cbind(targets, embeddings[["paragraphs"]]) %>%
+    paragraphTibble <- cbind(targets, embeddings) %>%
       tibble::as_tibble()
   }
 
@@ -618,28 +616,27 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
     )
   futureSentenceModel <-
     future::future(
-      getTrainableSentences(embeddings[["sentences"]], targets, modelName) %>%
+      getTrainableSentences(embeddings[["sentences"]], targets) %>%
         train()
     )
   futureParagraphModel <-
     future::future(
-      getTrainableParagraphs(embeddings[["paragraphs"]],
-                             targets, modelName) %>%
+      getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
         train()
     )
 
   switch(languageLevel,
     "token" = {
       tokenModel <- future::value(futureTokenModel)
-      return(list(tokenModel))
+      return(list("tokenModel" = tokenModel))
     },
     "sentence" = {
       sentenceModel <- future::value(futureSentenceModel)
-      return(list(sentenceModel))
+      return(list("sentenceModel" = sentenceModel))
     },
     "paragraph" = {
       paragraphModel <- future::value(futureParagraphModel)
-      return(list(paragraphModel))
+      return(list("paragraphModel" = paragraphModel))
     },
     "all" = {
       tokenModel <- future::value(futureTokenModel)
@@ -693,12 +690,10 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "all"
   }
-
   futureTokenPredictions <- future::future(
     getTrainableTokens(embeddings[["tokens"]], NULL, modelName) %>%
-    predict(models[["paragraphModel"]])
+      predict(models[["paragraphModel"]])
   )
-  print(embeddings[["sentences"]][[1]])
   futureSentencePredictions <- future::future(
     predict(embeddings[["sentences"]][[1]], models[["paragraphModel"]])
   )
@@ -851,8 +846,8 @@ generate_paragraph_html <- function(paragraph, sentences_html) {
 generateDocument <- function(data, embeddings, modelName) {
   rows <- getCLSSEPTokenRows(embeddings[["tokens"]][[1]], modelName)
   rows <- split(rows, seq(nrow(rows)))
+  
   # Generate the full document
-  print(data)
   word_starts <- sapply(embeddings[["tokens"]][[1]][["tokens"]], is_word_start,
                         get_subword_sign(modelName))
   start <- 1

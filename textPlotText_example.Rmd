@@ -30,13 +30,16 @@ if (FALSE){
 
 library(tidyverse)
 library(text)
+library(topics)
 
 reticulate::source_python("fullStopCorrt.py")
-reticulate::source_python("get_subword_sign.py")
+reticulate::source_python("utils.py")
 source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
+
+options(future.globals.maxSize = 2.0 * 1e9)
 
 # supported models: bert, roberta base models
 nameLLM <- "bert-base-uncased"
@@ -47,15 +50,17 @@ tokenizer <- getTokenizer(nameLLM)
 # Import data
 
 ```{r data import, echo=TRUE}
-data <- Language_based_assessment_data_8
+data <- dep_wor_data
+text_set <- "Deptext"
+scale_total <- "PHQ9tot"
+data_length <- 500
 print(nrow(data)) # 40 records
 ```
 # Restore punctuations 
 
 ```{r restore punctuations, echo=TRUE}
 # Choose harmonytexts as the visualization target in this example.
-
-data <- data[,c("harmonytexts", "hilstotal")]
+data <- data[,c(text_set, scale_total)]
 
 # Only needed if one finds the missing of puncuations in the text.
 # !!!! After running this code, a restart of the R console is needed. Plan to fix in the future.
@@ -63,15 +68,14 @@ if (FALSE){
   data[,"harmonytexts"] <- sentsMarker(data[,"harmonytexts"])
   .rs.restartR()
 }
-print(toString(data[1, "harmonytexts"]))
-data <- data[1:40,c("harmonytexts", "hilstotal")]
+
 ```
 
 # Get embeddings
 
 ```{r get embed, echo=TRUE}
 embed1 <- createEmbeddings(
-                    data[2:40, "harmonytexts"],
+                    data[2:data_length, text_set],
                     model=nameLLM,
                     device = "gpu", # cpu, gpu, mps
                     dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
@@ -82,10 +86,9 @@ embed1 <- createEmbeddings(
 # Train a model to predict the target
 
 ```{r regression, echo=TRUE}
-
 theModels <- trainLanguageModel(embed1, # embedding
-                       data[2:40, "hilstotal"], # scale values, target
-                       "paragraph", # options: "token", "sentence", "passage", "all", # "all" include all the previous models
+                       data[2:data_length, scale_total], # scale values, target
+                       "all", # options: "token", "sentence", "passage", "all", # "all" include all the previous models
                        tokenizer,
                        modelName = nameLLM
 )
@@ -93,7 +96,7 @@ theModels <- trainLanguageModel(embed1, # embedding
 
 ```{r save the regression model, echo=TRUE}
 # Save the models for future use since the training is a bit slow.
-#saveRDS(theModels, paste0("model.rds"))
+saveRDS(theModels, paste0("topic_dep_model.rds"))
 #theModels <- readRDS("model.rds")
 ```
 
@@ -103,7 +106,7 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-toPredEmbed <- createEmbeddings(data[1,"harmonytexts"],
+toPredEmbed <- createEmbeddings(data[1,text_set],
                          model=nameLLM,
                          dim_name=FALSE, 
                          device="gpu",
@@ -134,7 +137,7 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-colored <- createColoredTibble(output, limits = c(7, 49))
+colored <- createColoredTibble(output, limits = c(0, 27))
 ```
 
 ```{r Plot_preparation, echo=TRUE}
@@ -146,45 +149,3 @@ source(
 plot <- generateDocument(colored, toPredEmbed, nameLLM)
 plot
 ```
-
-```{r Plot_preparation, echo=TRUE}
-output <- list("Pred" = output, "model" = theModels)
-output <- getLangColorTb(output)
-toPlot <- getOutDf(output, nameLLM)
-
-```
-# Plot the default plot
-
-```{r Plot, echo=TRUE}
-
-plot1 <- textPlotText(toPlot, list("all"), textColor="black", modelName=nameLLM)
-
-plot1
-
-```
-
-# Custom the color of the plot
-
-```{r Change the color of the plot, echo=TRUE}
-cusColVecRGB <- list(list(10,50,100), list(130, 180, 230)) # 0-255; from lower to higher
-# Default list(list(243,249,246), list(253, 247, 244)) 
-
-toPlot_cusRGB <- cusPlotText(toPlot, cusColVecRGB, "RGB", restore=FALSE, nameLLM)
-
-plot2 <- textPlotText(toPlot_cusRGB, list("all"), textColor="black", modelName=nameLLM)
-
-plot2
-```
-
-# Restore the plot to the default color
-
-```{r Restore the color to default, echo=TRUE}
-toPlot_ori <- cusPlotText(toPlot_cusRGB, restore=TRUE, modelName=nameLLM)
-
-plot3 <- textPlotText(toPlot_ori, list("all"), textColor="black", modelName=nameLLM)
-
-plot3
-
-```
-
-
