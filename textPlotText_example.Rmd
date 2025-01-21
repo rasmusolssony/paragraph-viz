@@ -88,7 +88,7 @@ embed1 <- createEmbeddings(
 ```{r regression, echo=TRUE}
 theModels <- trainLanguageModel(embed1, # embedding
                        data[2:data_length, scale_total], # scale values, target
-                       "all", # options: "token", "sentence", "passage", "all", # "all" include all the previous models
+                       "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
                        tokenizer,
                        modelName = nameLLM
 )
@@ -106,11 +106,12 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-toPredEmbed <- createEmbeddings(data[1,text_set],
+toPredEmbed <- createEmbeddings(data[3,text_set],
                          model=nameLLM,
                          dim_name=FALSE, 
                          device="gpu",
                          includeCLSSEP="both")
+toPredEmbed <- addSentenceEmbeddings(toPredEmbed, nameLLM, includeCLSSEP="both")
 ```
 
 
@@ -137,7 +138,7 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-colored <- createColoredTibble(output, limits = c(0, 27))
+#colored <- createColoredTibble(output, limits = c(0, 27))
 ```
 
 ```{r Plot_preparation, echo=TRUE}
@@ -145,7 +146,7 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-
-plot <- generateDocument(colored, toPredEmbed, nameLLM)
+print(data[1, text_set][[1]])
+plot <- generateDocument(output, toPredEmbed, data[1, scale_total], nameLLM, limits = c(0, 27), palette = NULL)
 plot
 ```

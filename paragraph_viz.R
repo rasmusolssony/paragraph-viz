@@ -1,55 +1,6 @@
 # refactor based on the online doc
 # Using inline js pack to run via htmltools: https://rstudio.github.io/htmltools/reference/htmlDependency.html
 
-#### constants ####
-MODEL_FAMILIES <- list(
-  BERT = "BERT",
-  ROBERTA = "RoBERTa"
-)
-
-MODEL_NAMES <- list(
-  BERT = list(
-    BASE_UNCASED = "bert-base-uncased",
-    BASE_CASED ="bert-base-cased"
-  ),
-  ROBERTA = list(
-    BASE = "roberta-base",
-    LARGE = "roberta-large"
-  )
-)
-
-TOKENS <- list(
-  BERT = list(CLS = "[CLS]", SEP = "[SEP]"),
-  ROBERTA = list(CLS = "<s>", SEP = "</s>")
-)
-
-#### private func ####
-
-#' Determine model family
-#' @param model_name (string) The name of the model.
-#' @return A string of model family.
-#' @noRd
-get_model_family <- function(model_name) {
-  for (family in names(MODEL_FAMILIES)) {
-    if (model_name %in% MODEL_NAMES[[family]]) {
-      return(MODEL_FAMILIES[[family]])
-    }
-  }
-  return(NULL)
-}
-
-#' Get CLS and SEP tokens based on model family
-#' @param model_family (string) The name of the model family.
-#' @return A list with CLS and SEP tokens.
-#' @noRd
-get_cls_sep_tokens <- function(model_family) {
-  if (model_family %in% names(TOKENS)) {
-    return(TOKENS[[model_family]])
-  } else {
-    return(list(CLS = "[CLS]", SEP = "[SEP]"))  # Default tokens
-  }
-}
-
 #'Punctuates a string of text.
 #' @param str (string) The string to be marked by full stop transformer model.
 #' @importFrom reticulate source_python
@@ -108,8 +59,9 @@ createEmbeddings <- function(texts, modelName, device, dim_name, includeCLSSEP) 
     device = device,
     dim_name = dim_name
   )
+
   embeddings[["tokens"]] <- embeddings[["tokens"]][[1]]
-  embeddings <- addSentenceEmbeddings(embeddings, modelName, includeCLSSEP)
+  #embeddings <- addSentenceEmbeddings(embeddings, modelName, includeCLSSEP)
   embeddings[["paragraphs"]] <- cbind(texts, embeddings[["texts"]][[1]]) %>%
     tibble::as_tibble()
   return(embeddings)
@@ -150,7 +102,7 @@ decodeToken <- function(aStringList, tokenizers, modelName) {
 #' @return A boolean value.
 #' @noRd
 is_word_start <- function(token, subword_sign = "##") {
-  if(subword_sign == "##") {
+  if (subword_sign == "##") {
     return(!startsWith(token, subword_sign))
   } else if (subword_sign == "Ġ") {
     return(startsWith(token, subword_sign))
@@ -171,8 +123,10 @@ is_word_start <- function(token, subword_sign = "##") {
 #' @noRd
 getSubWordIDs <- function(tokens, modelName) {
   # Mark the start of each word.
+  subword_sign <- get_subword_sign(modelName)
   word_starts <- sapply(tokens, is_word_start,
-                        get_subword_sign(modelName))
+                        subword_sign)
+
 
   # Generate a tibble for processing
   subword_tibble <- tibble::tibble(
@@ -187,6 +141,7 @@ getSubWordIDs <- function(tokens, modelName) {
     group_by(group) %>%
     summarize(start_row = min(index), end_row = max(index),
               .groups = "drop") %>%
+    filter(start_row != end_row) %>%
     select(start_row, end_row)
 
   return(result)
@@ -213,13 +168,10 @@ combineSubWords <- function(tokens, subwordIDs, tokenizer, modelName) {
     # Trim potential whitespaces
     combined_word <- trimws(combined_word)
     # Replace the inital subword with the combined word and set the rest to NA
-    tokens$tokens[start:end] <- combined_word
+    tokens$tokens[start:end] <- c(combined_word, rep(NA, end - start))
     # Set the words embeddings to the average of the subwords embeddings.
-    # TODO: Investigate if this is should be done for all models
-    if(end - start > 1) {
-      tokens[start, 3:ncol(tokens)] <-
-        colMeans(tokens[start:end, 3:ncol(tokens)])
-    }
+    tokens[start, 3:ncol(tokens)] <-
+      t(colMeans(tokens[start:end, 3:ncol(tokens)]))
   }
   # Remove rows with NA tokens (i.e., former subwords)
   tokens <- tokens %>% tidyr::drop_na(tokens)
@@ -237,7 +189,7 @@ combineSubWords <- function(tokens, subwordIDs, tokenizer, modelName) {
 #' @importFrom dplyr group_by summarise
 #' @return The aligned tibble.
 #' @noRd
-getTrainableTokens <- function(embeddings, targets = NULL,
+getTrainableWords <- function(embeddings, targets = NULL,
                                modelName, combineSubwords = TRUE) {
   start_token <- get_start_token(modelName)
   end_token <- get_end_token(modelName)
@@ -611,7 +563,7 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
   }
   futureTokenModel <-
     future::future(
-      getTrainableTokens(embeddings[["tokens"]], targets, modelName) %>%
+      getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
         train()
     )
   futureSentenceModel <-
@@ -691,7 +643,7 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
     languageLevel <- "all"
   }
   futureTokenPredictions <- future::future(
-    getTrainableTokens(embeddings[["tokens"]], NULL, modelName) %>%
+    getTrainableWords(embeddings[["tokens"]], NULL, modelName) %>%
       predict(models[["paragraphModel"]])
   )
   futureSentencePredictions <- future::future(
@@ -750,22 +702,28 @@ valuesToColor <- function(values, limits = NULL) {
   # Validate input
   if (!is.numeric(values)) stop("`values` must be a numeric vector.")
   if(is.null(limits)) limits=range(values)
-    pal = colorRampPalette(c("green", "red"))( 5 )
-    colorValues <- pal[findInterval(values,seq(limits[1],limits[2],length.out=length(pal)+1), all.inside=TRUE)]
+  pal = colorRampPalette(c("green", "red"))( 5 )
+  colorValues <- pal[findInterval(values,seq(limits[1],limits[2],length.out=length(pal)+1), all.inside=TRUE)]
   # Use a diverging color palette
   #colorValues <- colorspace::diverging_hcl(
   #  n = length(values),
   #  palette = palette
   #)
-  
+
   return(colorValues)
 }
 
 
 # Define the color gradient
-generate_gradient <- function(values, lower_limit, upper_limit) {
+generate_gradient <- function(values, lower_limit, upper_limit, palette = NULL) {
+  # Default to a red-yellow-blue color palette
+  if (!is.null(palette)) {
+    palette <- "RdYlBu"
+  }
   # Ensure limits are numeric
-  if (!is.numeric(values) || !is.numeric(lower_limit) || !is.numeric(upper_limit)) {
+  if (!is.numeric(values) ||
+        !is.numeric(lower_limit) ||
+        !is.numeric(upper_limit)) {
     stop("Values and limits must be numeric.")
   }
 
@@ -773,7 +731,8 @@ generate_gradient <- function(values, lower_limit, upper_limit) {
   values_clamped <- pmax(lower_limit, pmin(values, upper_limit))
 
   # Normalize values to a 0-1 scale
-  normalized_values <- (values_clamped - lower_limit) / (upper_limit - lower_limit)
+  normalized_values <-
+    (values_clamped - lower_limit) / (upper_limit - lower_limit)
 
   # Create the color palette from green to red
   # palette <- colorRampPalette(c("#2ad587", "#0078d2"))
@@ -785,10 +744,19 @@ generate_gradient <- function(values, lower_limit, upper_limit) {
   return(colors)
 }
 
-createColoredTibble <- function(predictions, limits = NULL) {
-  predictions$tokens$colorCodes <- generate_gradient(predictions$tokens$predicted_value, limits[1], limits[2])
-  predictions$sentences$colorCodes <- generate_gradient(predictions$sentences$predicted_value, limits[1], limits[2])
-  predictions$paragraphs$colorCodes <- generate_gradient(predictions$paragraphs$predicted_value, limits[1], limits[2])
+createColoredTibble <- function(predictions, limits, palette = NULL) {
+  # Generate color codes for each value
+  predictions$tokens$colorCodes <-
+    generate_gradient(predictions$tokens$predicted_value,
+                      limits[1], limits[2], palette)
+
+  predictions$sentences$colorCodes <-
+    generate_gradient(predictions$sentences$predicted_value,
+                      limits[1], limits[2], palette)
+
+  predictions$paragraphs$colorCodes <-
+    generate_gradient(predictions$paragraphs$predicted_value,
+                      limits[1], limits[2], palette)
 
   return(predictions)
 }
@@ -843,13 +811,43 @@ generate_paragraph_html <- function(paragraph, sentences_html) {
     sentences_html
   )
 }
-generateDocument <- function(data, embeddings, modelName) {
+
+generate_legend_html <- function(limits, palette) {
+  legend_values <- seq(limits[1], limits[2], length.out = 5)
+  legend_colors <- generate_gradient(legend_values, limits[1],
+                                     limits[2], palette)
+  legend_html <- lapply(1:5, function(i) {
+    span(
+      style = paste0(
+        "background-color:", legend_colors[i], ";",
+        "padding: 5px;", # Padding for the legend
+        "margin-right: 5px;" # Space between legend items
+      ),
+      legend_values[i]
+    )
+  })
+
+  legend_html <- div(
+    style = "margin-top: 10px;", # Space above the legend
+    h3("Legend"),
+    legend_html
+  )
+
+  return(legend_html)
+}
+
+generateDocument <- function(data, embeddings, target, modelName, limits, palette = NULL) {
+  #Get the color codes for each value
+  data <- createColoredTibble(data, limits, palette)
+  print(data$tokens, n = 150)
+  # Get the rows for the CLS and SEP tokens
   rows <- getCLSSEPTokenRows(embeddings[["tokens"]][[1]], modelName)
   rows <- split(rows, seq(nrow(rows)))
-  
+
   # Generate the full document
+  subword_sign <- get_subword_sign(modelName)
   word_starts <- sapply(embeddings[["tokens"]][[1]][["tokens"]], is_word_start,
-                        get_subword_sign(modelName))
+                        subword_sign)
   start <- 1
 
   tokens_html <- lapply(rows, function(row) {
@@ -857,7 +855,6 @@ generateDocument <- function(data, embeddings, modelName) {
     range <- getStartAndEndRow(includeCLSSEP = "none", row$CLS, row$SEP)
 
     # Calculate the end index for this range
-
     end <- start + sum(word_starts[range[[1]]:range[[2]]]) - 1
 
     # Subset tokens for this range
@@ -873,13 +870,18 @@ generateDocument <- function(data, embeddings, modelName) {
 
   paragraph_html <- generate_paragraph_html(data$paragraph, sentences_html)
 
+  legend_html <- generate_legend_html(limits, palette)
+
   # Wrap in a basic HTML structure
   full_html <- tags$html(
     tags$head(tags$title("Text Visualization")),
     tags$body(
       tags$h1("Text Prediction Visualization"),
       paragraph_html,
-      tags$h3("Predicted value: ", data$paragraph$predicted_value)
+      legend_html,
+      tags$h3("Predicted score: ",
+              trunc(data$paragraph$predicted_value*10^2)/10^2,
+              ", True score: ", target),
     )
   )
 

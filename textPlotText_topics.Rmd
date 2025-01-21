@@ -30,9 +30,9 @@ library(tidyverse)
 library(text)
 library(topics)
 
-reticulate::source_python("r-text_misc/fullStopCorrt.py")
+reticulate::source_python("fullStopCorrt.py")
 source(
-  "r-text_misc/textPlotText_test.R", # plotting functions
+  "textPlotText_v0.2.R", # plotting functions
   encoding = localeToCharset()
 )
 
@@ -56,17 +56,17 @@ print(nrow(data)) # should be max data_length number of records
 ```{r restore punctuations, echo=TRUE}
 # Choose harmonytexts as the visualization target in this example.
 source(
-  "r-text_misc/textPlotText_test.R", # plotting functions
+  "textPlotText_v0.2.R", # plotting functions
   encoding = localeToCharset()
 )
 data <- data[, c(text_set, scale_total)]
 # Only needed if one finds the missing of puncuations in the text.
 # !!!! After running this code, a restart of the R console is needed. Plan to fix in the future.
-if (TRUE) {
+if (FALSE) {
   data[, text_set] <- sentsMarker(data[, text_set])
   rs.restartR()
 }
-#data[1, "Deptext"] <- paste(data[1, "Deptext"], ".", sep = "", collapse = NULL)
+data[1, "Deptext"] <- paste(data[1, "Deptext"], ".", sep = "", collapse = NULL)
 print(toString(data[1, "Deptext"]))
 ```
 
