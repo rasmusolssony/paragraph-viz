@@ -66,7 +66,6 @@ createEmbeddings <- function(texts,
                              modelName = "bert-base-uncased",
                              device = "gpu",
                              dim_name = FALSE,
-                             model_max_length = NULL,
                              embedSentences = TRUE,
                              includeCLSSEP = "both") {
   embeddings <- text:: textEmbed(
@@ -74,8 +73,6 @@ createEmbeddings <- function(texts,
     model = modelName,
     device = device,
     dim_name = dim_name,
-    model_max_length = as.integer(model_max_length),
-    tokenizer_parallelism = TRUE
   )
 
   embeddings[["tokens"]] <- embeddings[["tokens"]][[1]]
@@ -867,7 +864,7 @@ generateDocument <- function(data, embeddings, target, modelName, limits, palett
       paragraph_html,
       legend_html,
       tags$h3("Predicted score: ",
-              trunc(data$paragraph$predicted_value*10^2)/10^2,
+              trunc(data$paragraph$predicted_value * 10^2) / 10^2,
               ", True score: ", target),
     )
   )
