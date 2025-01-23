@@ -14,7 +14,7 @@ output:
 ```{r setup, include=FALSE}
 options(warn=-1)
 knitr::opts_chunk$set(echo = TRUE)
-
+Sys.setenv(DISABLE_TORCH_MLIR_TORCHTRITON = "1")
 ```
 
 This tutorial will use the <b><big>Language_based_assessment_data_8</big></b> in Text package to generate a plot.
@@ -39,10 +39,12 @@ source(
   encoding=localeToCharset()
 )
 
+set_env_var()
+
 options(future.globals.maxSize = 2.0 * 1e9)
 
 # supported models: bert, roberta base models
-nameLLM <- "bert-base-uncased"
+nameLLM <- "mixedbread-ai/mxbai-embed-2d-large-v1"
 sign <- get_subword_sign(nameLLM)
 tokenizer <- getTokenizer(nameLLM)
 ```
@@ -79,6 +81,8 @@ embed1 <- createEmbeddings(
                     model=nameLLM,
                     device = "gpu", # cpu, gpu, mps
                     dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
+                    model_max_length = 512,
+                    embedSentences = FALSE, # When only training a model on paragraphs this should be FALSE
                     "both"
 )
 ```
@@ -96,7 +100,7 @@ theModels <- trainLanguageModel(embed1, # embedding
 
 ```{r save the regression model, echo=TRUE}
 # Save the models for future use since the training is a bit slow.
-saveRDS(theModels, paste0("topic_dep_model.rds"))
+saveRDS(theModels, paste0("topic_dep_modernbert.rds"))
 #theModels <- readRDS("model.rds")
 ```
 
@@ -106,14 +110,22 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-toPredEmbed <- createEmbeddings(data[3,text_set],
-                         model=nameLLM,
-                         dim_name=FALSE, 
-                         device="gpu",
-                         includeCLSSEP="both")
-toPredEmbed <- addSentenceEmbeddings(toPredEmbed, nameLLM, includeCLSSEP="both")
+toPredEmbed <- createEmbeddings(data[1,text_set],
+                                model=nameLLM,
+                                device = "gpu", # cpu, gpu, mps
+                                dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
+                                model_max_length = 512,
+                                embedSentences = TRUE, # When only training a model on paragraphs this should be FALSE
+                                "both"
+)
 ```
-
+```{r Plot_preparation, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+print(toPredEmbed)
+```
 
 # Plot preparation
 

@@ -1,0 +1,135 @@
+---
+title: "paragraph_viz examples"
+author: "Nils Broman"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+options(warn=-1)
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Import packages and functions
+```{r import the plotting functions, echo=TRUE}
+
+if (FALSE){
+  # install packages needed for punctuation restoring. In a future Text version, this is not necessary.
+  reticulate::conda_install(envname="textrpp_condaenv", c("protobuf","sentencepiece"), forge=FALSE, pip=TRUE)
+}
+
+library(tidyverse)
+library(text)
+library(topics)
+
+reticulate::source_python("fullStopCorrt.py")
+reticulate::source_python("utils.py")
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+
+options(future.globals.maxSize = 2.0 * 1e9)
+
+```
+
+# Select model, data and parameters
+```{r data import, echo=TRUE}
+# supported models: bert, roberta base models, mxbai
+# nameLLM <- "bert-base-uncased"
+nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
+# nameLLM <- "jxm/cde-small-v2"
+
+sign <- get_subword_sign(nameLLM)
+tokenizer <- getTokenizer(nameLLM)
+
+# dataset: dep_wor_data
+data <- dep_wor_data
+text_set <- "Deptext"
+scale_total <- "PHQ9tot"
+data_length <- nrow(data)
+
+# size of train and test sets
+test_size <- 50
+train_size <- data_length - test_size
+
+data <- data[,c(text_set, scale_total)]
+
+
+model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size) # nolint: line_length_linter.
+save_model <- TRUE
+force_train <- FALSE
+
+```
+
+# Train Model / Load Model
+```{r train, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
+
+  embed1 <- createEmbeddings(
+                      data[test_size+1:train_size+test_size, text_set],
+                      model=nameLLM,
+                      device = "gpu", # cpu, gpu, mps
+                      dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
+                      "both"
+  )
+
+  if (FALSE){ #TODO: update to check automatically
+    # Only needed when training seperate classifyers for each language level
+    embed1 <- addSentenceEmbeddings(embed1, nameLLM, includeCLSSEP="both")
+  }
+
+  theModels <- trainLanguageModel(embed1, # embedding
+                        data[test_size+1:train_size+test_size, scale_total], # scale values, target
+                        "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
+                        tokenizer,
+                        modelName = nameLLM
+  )
+
+  if(save_model){
+    if(!dir.exists(file.path(model_folder_path))){
+      dir.create(file.path(model_folder_path))
+    }
+    saveRDS(theModels, paste0(model_folder_path, "/models.rds"))
+  }
+
+} else {
+  theModels <- readRDS(paste0(model_folder_path, "/models.rds"))
+}
+```
+
+# Predict and plot
+```{r pred and plot, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+paragraph_to_plot <- 1
+
+toPredEmbed <- createEmbeddings(data[paragraph_to_plot,text_set],
+                         model=nameLLM,
+                         dim_name=FALSE, 
+                         device="gpu",
+                         includeCLSSEP="both")
+toPredEmbed <- addSentenceEmbeddings(toPredEmbed, nameLLM, includeCLSSEP="both")
+
+output <- predictLanguage(toPredEmbed, theModels, "all", tokenizer, nameLLM)
+
+plot <- generateDocument(output, toPredEmbed, data[paragraph_to_plot, scale_total], nameLLM, limits = c(0, 27), palette = NULL)
+plot
+```
+
+```{r}
+#only here for run above button
+```

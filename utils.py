@@ -45,3 +45,7 @@ def get_end_token(model_name):
         print("End token not found")
 
     return end_token
+
+def set_env_var():
+    import os
+    os.environ["DISABLE_TORCH_MLIR_TORCHTRITON"] = "1"  

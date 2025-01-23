@@ -52,16 +52,37 @@ getTokenizer <- function(modelName) {
 # TODO: Decide if we want a wrapper function like this or if we want
 # to resturcture the code to allow different texts to be used at the
 # same time.
-createEmbeddings <- function(texts, modelName, device, dim_name, includeCLSSEP) {
+#' Create the embeddings for the input texts.
+#' @param texts (tibble) The input tibble of texts.
+#' @param modelName (str) The pre-trained model name in the transformers hub.
+#' @param device (str) The device to use for the embeddings.
+#' @param dim_name (logical) Whether to include the dimension names.
+#' @param embedSentences (logical) Whether to create embeddings for the
+#' sentences. This is only needed if you want to train a model on the sentence
+#' level.
+#' @param includeCLSSEP (str) To include the embeddings of
+#' "CLS", "SEP", "both", or "none" when creating sentence embeddings.
+createEmbeddings <- function(texts,
+                             modelName = "bert-base-uncased",
+                             device = "gpu",
+                             dim_name = FALSE,
+                             model_max_length = NULL,
+                             embedSentences = TRUE,
+                             includeCLSSEP = "both") {
   embeddings <- text:: textEmbed(
     texts = texts,
     model = modelName,
     device = device,
-    dim_name = dim_name
+    dim_name = dim_name,
+    model_max_length = as.integer(model_max_length),
+    tokenizer_parallelism = TRUE
   )
 
   embeddings[["tokens"]] <- embeddings[["tokens"]][[1]]
-  #embeddings <- addSentenceEmbeddings(embeddings, modelName, includeCLSSEP)
+
+  if (embedSentences) {
+    embeddings <- addSentenceEmbeddings(embeddings, modelName, includeCLSSEP)
+  }
   embeddings[["paragraphs"]] <- cbind(texts, embeddings[["texts"]][[1]]) %>%
     tibble::as_tibble()
   return(embeddings)
@@ -208,6 +229,7 @@ getTrainableWords <- function(embeddings, targets = NULL,
     #TODO: Fix better solution for this
     tokenTibble <- embeddings[[1]]
   }
+  print(tokenTibble)
   # Filter out special tokens (CLS, SEP, etc.)
   tokenTibble <- tokenTibble %>% dplyr::filter(tokens != start_token)
   tokenTibble <- tokenTibble %>% dplyr::filter(tokens != end_token)
@@ -372,7 +394,7 @@ averageTokenEmbeddings <- function(sentenceEmbeddings, rowCLS,
   return(sentenceEmbeddings)
 }
 # TODO: Preserve capital letters.
-#' Transforms the tokens to sentences by combining the 
+#' Transforms the tokens to sentences by combining the
 #' tokens and averaging the embeddings.
 #' @param tokenEmbeddings The input tibble of token embeddings.
 #' @param tokenizer The tokenizer used.
@@ -561,16 +583,16 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "paragraph"
   }
-  futureTokenModel <-
-    future::future(
-      getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
-        train()
-    )
-  futureSentenceModel <-
-    future::future(
-      getTrainableSentences(embeddings[["sentences"]], targets) %>%
-        train()
-    )
+  # futureTokenModel <-
+  #   future::future(
+  #     getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
+  #       train()
+  #   )
+  # futureSentenceModel <-
+  #   future::future(
+  #     getTrainableSentences(embeddings[["sentences"]], targets) %>%
+  #       train()
+  #   )
   futureParagraphModel <-
     future::future(
       getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
@@ -642,34 +664,32 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "all"
   }
-  futureTokenPredictions <- future::future(
-    getTrainableWords(embeddings[["tokens"]], NULL, modelName) %>%
-      predict(models[["paragraphModel"]])
-  )
-  futureSentencePredictions <- future::future(
-    predict(embeddings[["sentences"]][[1]], models[["paragraphModel"]])
-  )
-  futureParagraphPredictions <- future::future(
-    predict(embeddings[["paragraphs"]], models[["paragraphModel"]])
-  )
 
   switch(languageLevel,
     "token" = {
-      tokenPredictions <- future::value(futureTokenPredictions)
+      tokenPredictions <-
+        getTrainableWords(embeddings[["tokens"]], NULL, modelName) %>%
+        predict(models[["paragraphModel"]])
       return(list("tokens" = tokenPredictions))
     },
     "sentence" = {
-      sentencePredicitons <- future::value(futureSentencePredictions)
+      sentencePredicitons <-
+        predict(embeddings[["sentences"]][[1]], models[["paragraphModel"]])
       return(list("sentences" = sentencePredicitons))
     },
     "paragraph" = {
-      paragraphPredictions <- future::value(futureParagraphPredictions)
+      paragraphPredictions <-
+        predict(embeddings[["paragraphs"]], models[["paragraphModel"]])
       return(list("paragraphs" = paragraphPredictions))
     },
     "all" = {
-      tokenPredictions <- future::value(futureTokenPredictions)
-      sentencePredicitons <- future::value(futureSentencePredictions)
-      paragraphPredictions <- future::value(futureParagraphPredictions)
+      tokenPredictions <-
+        getTrainableWords(embeddings[["tokens"]], NULL, modelName) %>%
+        predict(models[["paragraphModel"]])
+      sentencePredicitons <-
+        predict(embeddings[["sentences"]][[1]], models[["paragraphModel"]])
+      paragraphPredictions <-
+        predict(embeddings[["paragraphs"]], models[["paragraphModel"]])
       return(list(
         "tokens" = tokenPredictions,
         "sentences" = sentencePredicitons,
@@ -679,40 +699,7 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
   )
 }
 
-#### Color functions(?) ####
-
-#' Convert Values to Colors
-#'
-#' Maps numeric values to color codes using either a diverging or sequential palette.
-#'
-#' @param values Numeric vector. The values to map to colors.
-#' @param diverge Logical. If TRUE, uses a diverging color palette (default: TRUE).
-#' @param palette Character or function. Either the name of a diverging palette (e.g., "Temps") 
-#'   or a sequential palette generator (default: `grDevices::rainbow(200)`).
-#' @param limits Numeric vector of length 2. Specifies the minimum and maximum range of `values`.
-#'   Only used if `diverge = FALSE`. Defaults to the range of `values`.
-#' @return A character vector of hex color codes corresponding to the input `values`.
-#' @importFrom colorspace diverging_hcl
-#' @importFrom grDevices rainbow
-#' @examples
-#' values <- c(-1, 0, 1)
-#' valuesToColor(values)
-#' valuesToColor(values, diverge = FALSE, palette = grDevices::rainbow(100))
-valuesToColor <- function(values, limits = NULL) {
-  # Validate input
-  if (!is.numeric(values)) stop("`values` must be a numeric vector.")
-  if(is.null(limits)) limits=range(values)
-  pal = colorRampPalette(c("green", "red"))( 5 )
-  colorValues <- pal[findInterval(values,seq(limits[1],limits[2],length.out=length(pal)+1), all.inside=TRUE)]
-  # Use a diverging color palette
-  #colorValues <- colorspace::diverging_hcl(
-  #  n = length(values),
-  #  palette = palette
-  #)
-
-  return(colorValues)
-}
-
+#### Color functions ####
 
 # Define the color gradient
 generate_gradient <- function(values, lower_limit, upper_limit, palette = NULL) {
@@ -736,7 +723,7 @@ generate_gradient <- function(values, lower_limit, upper_limit, palette = NULL) 
 
   # Create the color palette from green to red
   # palette <- colorRampPalette(c("#2ad587", "#0078d2"))
-  palette <- colorspace::divergingx_hcl(100, palette="RdYlBu")
+  palette <- colorspace::divergingx_hcl(100, palette)
 
   # Generate colors for the normalized values
   colors <- palette[ceiling(normalized_values * 99) + 1]
