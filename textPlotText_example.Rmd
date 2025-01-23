@@ -55,7 +55,7 @@ tokenizer <- getTokenizer(nameLLM)
 data <- dep_wor_data
 text_set <- "Deptext"
 scale_total <- "PHQ9tot"
-data_length <- 500
+data_length <- 50
 print(nrow(data)) # 40 records
 ```
 # Restore punctuations 
@@ -70,7 +70,6 @@ if (FALSE){
   data[,"harmonytexts"] <- sentsMarker(data[,"harmonytexts"])
   .rs.restartR()
 }
-
 ```
 
 # Get embeddings
@@ -81,7 +80,6 @@ embed1 <- createEmbeddings(
                     model=nameLLM,
                     device = "gpu", # cpu, gpu, mps
                     dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
-                    model_max_length = 512,
                     embedSentences = FALSE, # When only training a model on paragraphs this should be FALSE
                     "both"
 )
@@ -93,7 +91,6 @@ embed1 <- createEmbeddings(
 theModels <- trainLanguageModel(embed1, # embedding
                        data[2:data_length, scale_total], # scale values, target
                        "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
-                       tokenizer,
                        modelName = nameLLM
 )
 ```

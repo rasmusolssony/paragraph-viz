@@ -12,7 +12,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-options(warn=-1)
+options(warn=1)
 knitr::opts_chunk$set(echo = TRUE)
 
 ```
@@ -43,30 +43,44 @@ options(future.globals.maxSize = 2.0 * 1e9)
 # Select model, data and parameters
 ```{r data import, echo=TRUE}
 # supported models: bert, roberta base models, mxbai
-# nameLLM <- "bert-base-uncased"
-nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
+nameLLM <- "bert-base-uncased"
+# nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
 # nameLLM <- "jxm/cde-small-v2"
-
-sign <- get_subword_sign(nameLLM)
-tokenizer <- getTokenizer(nameLLM)
 
 # dataset: dep_wor_data
 data <- dep_wor_data
 text_set <- "Deptext"
 scale_total <- "PHQ9tot"
 data_length <- nrow(data)
-
 # size of train and test sets
 test_size <- 50
 train_size <- data_length - test_size
 
-data <- data[,c(text_set, scale_total)]
+data <- data[, c(text_set, scale_total)]
 
 
 model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size) # nolint: line_length_linter.
 save_model <- TRUE
 force_train <- FALSE
+```
 
+# Create embeddings
+```{r train, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
+
+  embed <- createEmbeddings(
+                      data[(test_size+1):data_length, text_set],
+                      model=nameLLM,
+                      device = "gpu", # cpu, gpu, mps
+                      dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
+                      embedSentences = FALSE, # Should be false for paragraph level training
+                      "both"
+  )
+}
 ```
 
 # Train Model / Load Model
@@ -75,25 +89,12 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
+
 if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
-  embed1 <- createEmbeddings(
-                      data[test_size+1:train_size+test_size, text_set],
-                      model=nameLLM,
-                      device = "gpu", # cpu, gpu, mps
-                      dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
-                      "both"
-  )
-
-  if (FALSE){ #TODO: update to check automatically
-    # Only needed when training seperate classifyers for each language level
-    embed1 <- addSentenceEmbeddings(embed1, nameLLM, includeCLSSEP="both")
-  }
-
-  theModels <- trainLanguageModel(embed1, # embedding
-                        data[test_size+1:train_size+test_size, scale_total], # scale values, target
+  theModels <- trainLanguageModel(embed, # embedding
+                        data[(test_size+1):data_length, scale_total], # scale values, target
                         "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
-                        tokenizer,
                         modelName = nameLLM
   )
 
@@ -115,18 +116,17 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-paragraph_to_plot <- 1
+paragraph_to_plot <- 43
 
 toPredEmbed <- createEmbeddings(data[paragraph_to_plot,text_set],
                          model=nameLLM,
-                         dim_name=FALSE, 
+                         dim_name=FALSE,
                          device="gpu",
+                         embedSentences = TRUE,
                          includeCLSSEP="both")
-toPredEmbed <- addSentenceEmbeddings(toPredEmbed, nameLLM, includeCLSSEP="both")
+output <- predictLanguage(toPredEmbed, theModels, "all", nameLLM)
 
-output <- predictLanguage(toPredEmbed, theModels, "all", tokenizer, nameLLM)
-
-plot <- generateDocument(output, toPredEmbed, data[paragraph_to_plot, scale_total], nameLLM, limits = c(0, 27), palette = NULL)
+plot <- generateDocument(output, toPredEmbed, data[paragraph_to_plot, scale_total], nameLLM, limits = c(0, 27))
 plot
 ```
 

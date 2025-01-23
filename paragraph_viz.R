@@ -226,7 +226,6 @@ getTrainableWords <- function(embeddings, targets = NULL,
     #TODO: Fix better solution for this
     tokenTibble <- embeddings[[1]]
   }
-  print(tokenTibble)
   # Filter out special tokens (CLS, SEP, etc.)
   tokenTibble <- tokenTibble %>% dplyr::filter(tokens != start_token)
   tokenTibble <- tokenTibble %>% dplyr::filter(tokens != end_token)
@@ -547,14 +546,10 @@ getTrainableParagraphs <- function(embeddings, targets) {
 #### Training functions
 
 #' Train the language model for tokens, sentences, or paragraphs.
-#' @param embeddings The tibble of token embeddings
-#' @param targets The tibble, The prediction target
-#' @param tokenizer (R_obj) The tokenizers in use
-#' @param modelName (str) The model name in use
+#' @param tibble The tibble of embeddings and targets.
 #' @retrun The trained model
 #' @NoRd
 train <- function(tibble) {
-
   # Train the model
   model <- textTrain(
     x = tibble[, 3:ncol(tibble)],
@@ -570,13 +565,12 @@ train <- function(tibble) {
 #' @param targets (R_obj) The training target.
 #' @param languageLevel (str) "token", "sentence", "paragraph" or "all".
 #'  The default is "all".
-#' @param tokenizers (R_obj) The tokenizer in use.
 #' @param modelName (str) The transformer model in use.
 #' @importFrom future future value
 #' @return The trained model
 #' @NoRd
 trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
-                               tokenizer, modelName) {
+                               modelName) {
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "paragraph"
   }
@@ -591,10 +585,10 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
   #       train()
   #   )
   futureParagraphModel <-
-    future::future(
+  #  future::future(
       getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
         train()
-    )
+  #  )
 
   switch(languageLevel,
     "token" = {
@@ -606,7 +600,7 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
       return(list("sentenceModel" = sentenceModel))
     },
     "paragraph" = {
-      paragraphModel <- future::value(futureParagraphModel)
+      paragraphModel <- futureParagraphModel
       return(list("paragraphModel" = paragraphModel))
     },
     "all" = {
@@ -651,13 +645,12 @@ predict <- function(embeddings, model, modelName) {
 #' @param models The models from trainLangaueModel.
 #' @param languageLevel "token", "sentence", "parapgraph", "all".
 #' The default is "sentence".
-#' @param tokenizer (R_obj) The tokenizer.
 #' @param modelName (str) The name of the transformer model.
 #' @importFrom future future
 #' @return The prediction R object
 #' @NoRd
 predictLanguage <- function(embeddings, models, languageLevel = "all",
-                            tokenizer, modelName) {
+                            modelName) {
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "all"
   }
@@ -701,8 +694,8 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
 # Define the color gradient
 generate_gradient <- function(values, lower_limit, upper_limit, palette = NULL) {
   # Default to a red-yellow-blue color palette
-  if (!is.null(palette)) {
-    palette <- "RdYlBu"
+  if (is.null(palette)) {
+    palette <- "Temps"
   }
   # Ensure limits are numeric
   if (!is.numeric(values) ||
@@ -823,7 +816,6 @@ generate_legend_html <- function(limits, palette) {
 generateDocument <- function(data, embeddings, target, modelName, limits, palette = NULL) {
   #Get the color codes for each value
   data <- createColoredTibble(data, limits, palette)
-  print(data$tokens, n = 150)
   # Get the rows for the CLS and SEP tokens
   rows <- getCLSSEPTokenRows(embeddings[["tokens"]][[1]], modelName)
   rows <- split(rows, seq(nrow(rows)))
