@@ -28,6 +28,9 @@ if (FALSE){
 library(tidyverse)
 library(text)
 library(topics)
+library(future)
+
+plan(multisession)
 
 reticulate::source_python("fullStopCorrt.py")
 reticulate::source_python("utils.py")
@@ -36,7 +39,7 @@ source(
   encoding=localeToCharset()
 )
 
-options(future.globals.maxSize = 2.0 * 1e9)
+options(future.globals.maxSize = 1.0 * 1e10)
 
 ```
 
@@ -47,29 +50,27 @@ nameLLM <- "bert-base-uncased"
 # nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
 # nameLLM <- "jxm/cde-small-v2"
 
-# dataset: dep_wor_data
-data <- dep_wor_data
 text_set <- "Deptext"
 scale_total <- "PHQ9tot"
-data_length <- nrow(data)
+# dataset: dep_wor_data
+data <- dep_wor_data
+# extended dataset
+#data <- read_csv("dataset.csv")
+data <- data[, c(text_set, scale_total)]
+data <- drop_na(data)
+
+data_length <- 21
 # size of train and test sets
-test_size <- 50
+test_size <- 1
 train_size <- data_length - test_size
 
-data <- data[, c(text_set, scale_total)]
-
-
-model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size) # nolint: line_length_linter.
+model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size, "-lasso") # nolint: line_length_linter.
 save_model <- TRUE
-force_train <- FALSE
+force_train <- TRUE
 ```
 
 # Create embeddings
 ```{r train, echo=TRUE}
-source(
-  "paragraph_viz.R", # plotting functions
-  encoding=localeToCharset()
-)
 if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
   embed <- createEmbeddings(
@@ -85,20 +86,16 @@ if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
 # Train Model / Load Model
 ```{r train, echo=TRUE}
-source(
-  "paragraph_viz.R", # plotting functions
-  encoding=localeToCharset()
-)
-
 if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
   theModels <- trainLanguageModel(embed, # embedding
                         data[(test_size+1):data_length, scale_total], # scale values, target
                         "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
-                        modelName = nameLLM
+                        modelName = nameLLM,
+                        mixture = c(1)
   )
 
-  if(save_model){
+  if (save_model) {
     if(!dir.exists(file.path(model_folder_path))){
       dir.create(file.path(model_folder_path))
     }
@@ -112,11 +109,9 @@ if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
 # Predict and plot
 ```{r pred and plot, echo=TRUE}
-source(
-  "paragraph_viz.R", # plotting functions
-  encoding=localeToCharset()
-)
-paragraph_to_plot <- 43
+
+#theModels$paragraphModel$model_description[nrow(theModels$paragraphModel$model_description) + 1,] <- c("max_token_to_sentence = 4")
+paragraph_to_plot <- 1
 
 toPredEmbed <- createEmbeddings(data[paragraph_to_plot,text_set],
                          model=nameLLM,
@@ -126,8 +121,8 @@ toPredEmbed <- createEmbeddings(data[paragraph_to_plot,text_set],
                          includeCLSSEP="both")
 output <- predictLanguage(toPredEmbed, theModels, "all", nameLLM)
 
-plot <- generateDocument(output, toPredEmbed, data[paragraph_to_plot, scale_total], nameLLM, limits = c(0, 27))
-plot
+ #plot <- generateDocument(output, toPredEmbed, data[paragraph_to_plot, scale_total], nameLLM, limits = c(0, 27), filePath = paste0(model_folder_path, "/plot_paragraph_", paragraph_to_plot, ".html"))
+ #plot
 ```
 
 ```{r}

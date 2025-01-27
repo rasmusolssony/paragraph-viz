@@ -68,11 +68,11 @@ createEmbeddings <- function(texts,
                              dim_name = FALSE,
                              embedSentences = TRUE,
                              includeCLSSEP = "both") {
-  embeddings <- text:: textEmbed(
+  embeddings <- text::textEmbed(
     texts = texts,
     model = modelName,
     device = device,
-    dim_name = dim_name,
+    dim_name = dim_name
   )
 
   embeddings[["tokens"]] <- embeddings[["tokens"]][[1]]
@@ -192,7 +192,7 @@ combineSubWords <- function(tokens, subwordIDs, tokenizer, modelName) {
       t(colMeans(tokens[start:end, 3:ncol(tokens)]))
   }
   # Remove rows with NA tokens (i.e., former subwords)
-  tokens <- tokens %>% tidyr::drop_na(tokens)
+  tokens <- tidyr::drop_na(tokens)
   return(tokens)
 }
 
@@ -419,39 +419,35 @@ tokensToSentences <- function(tokenEmbeddings, tokenizer,
   sentenceTibble <- initSentenceTibble(tokenEmbeddings, modelName)
 
   # Generate future sentences
-  futureSentences <- future::future(
-    furrr::future_pmap(
-      list(
-        sentenceTibble[["sentences"]] %>% as.vector(),
-        sentenceTibble[["CLS"]] %>% as.vector(),
-        sentenceTibble[["SEP"]] %>% as.vector(),
-        tokenEmbeddings %>% list(),
-        tokenizer %>% list(),
-        modelName %>% list(),
-        includeCLSSEP %>% list()
-      ),
-      transformTokensToSentence
-    )
+  sentences <- purrr::pmap(
+    list(
+      sentenceTibble[["sentences"]] %>% as.vector(),
+      sentenceTibble[["CLS"]] %>% as.vector(),
+      sentenceTibble[["SEP"]] %>% as.vector(),
+      tokenEmbeddings %>% list(),
+      tokenizer %>% list(),
+      modelName %>% list(),
+      includeCLSSEP %>% list()
+    ),
+    transformTokensToSentence
   )
 
   # Generate future sentence embeddings
-  futureEmbeddings <- future::future(
-    furrr::future_pmap_dfr(
-      list(
-        sentenceTibble[, 4:ncol(sentenceTibble)] %>% as.data.frame() %>%
-          asplit(1),
-        sentenceTibble[["CLS"]] %>% as.vector(),
-        sentenceTibble[["SEP"]] %>% as.vector(),
-        tokenEmbeddings %>% list(),
-        includeCLSSEP %>% list()
-      ),
-      averageTokenEmbeddings
-    )
+  embeddings <- purrr::pmap_dfr(
+    list(
+      sentenceTibble[, 4:ncol(sentenceTibble)] %>% as.data.frame() %>%
+        asplit(1),
+      sentenceTibble[["CLS"]] %>% as.vector(),
+      sentenceTibble[["SEP"]] %>% as.vector(),
+      tokenEmbeddings %>% list(),
+      includeCLSSEP %>% list()
+    ),
+    averageTokenEmbeddings
   )
 
   # Resolve futures and update the sentence tibble
-  sentenceTibble[["sentences"]] <- future::value(futureSentences)
-  sentenceEmbeddings <- future::value(futureEmbeddings)
+  sentenceTibble[["sentences"]] <- sentences
+  sentenceEmbeddings <- embeddings
   sentenceTibble <- cbind(sentenceTibble[, 1:3], sentenceEmbeddings)
   return(sentenceTibble)
 }
@@ -482,7 +478,7 @@ addSentenceEmbeddings <- function(embeddings,
   tokenizer <- getTokenizer(modelName)
 
   # Generate sentence embeddings
-  sentenceEmbeddings <- furrr::future_pmap(
+  sentenceEmbeddings <- purrr::pmap(
     list(
       embeddings[["tokens"]] %>% as.vector(),
       tokenizer %>% list(),
@@ -493,7 +489,7 @@ addSentenceEmbeddings <- function(embeddings,
   )
 
   # Remove CLS and SEP columns
-  sentenceEmbeddings <- furrr::future_pmap(
+  sentenceEmbeddings <- purrr::pmap(
     list(
       sentenceEmbeddings %>% as.vector()
     ),
@@ -549,11 +545,13 @@ getTrainableParagraphs <- function(embeddings, targets) {
 #' @param tibble The tibble of embeddings and targets.
 #' @retrun The trained model
 #' @NoRd
-train <- function(tibble) {
+train <- function(tibble, mixture = c(0)) {
   # Train the model
-  model <- textTrain(
+  model <- text::textTrainRegression(
     x = tibble[, 3:ncol(tibble)],
-    y = tibble[, 1]
+    y = tibble[, 1],
+    impute_missing = TRUE,
+    #mixture = mixture,
   )
 
   return(model)
@@ -570,43 +568,54 @@ train <- function(tibble) {
 #' @return The trained model
 #' @NoRd
 trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
-                               modelName) {
+                               modelName, mixture = 0) {
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "paragraph"
   }
-  # futureTokenModel <-
-  #   future::future(
-  #     getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
-  #       train()
-  #   )
-  # futureSentenceModel <-
-  #   future::future(
-  #     getTrainableSentences(embeddings[["sentences"]], targets) %>%
-  #       train()
-  #   )
-  futureParagraphModel <-
-  #  future::future(
-      getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
-        train()
-  #  )
 
   switch(languageLevel,
     "token" = {
+      futureTokenModel <- future::future(
+        getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
+          train(mixture)
+      )
       tokenModel <- future::value(futureTokenModel)
       return(list("tokenModel" = tokenModel))
     },
     "sentence" = {
+      futureSentenceModel <- future::future(
+        getTrainableSentences(embeddings[["sentences"]], targets) %>%
+          train(mixture)
+      )
       sentenceModel <- future::value(futureSentenceModel)
       return(list("sentenceModel" = sentenceModel))
     },
     "paragraph" = {
+      futureParagraphModel <-
+        getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
+        train(mixture)
+
       paragraphModel <- futureParagraphModel
       return(list("paragraphModel" = paragraphModel))
     },
     "all" = {
+
+      futureTokenModel <- future::future(
+        getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
+          train(mixture)
+      )
+      futureSentenceModel <- future::future(
+        getTrainableSentences(embeddings[["sentences"]], targets) %>%
+          train(mixture)
+      )
+      futureParagraphModel <- future::future(
+        getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
+          train(mixture)
+      )
       tokenModel <- future::value(futureTokenModel)
       sentenceModel <- future::value(futureSentenceModel)
       paragraphModel <- future::value(futureParagraphModel)
+
       return(list(
         "tokenModel" = tokenModel,
         "sentenceModel" = sentenceModel,
@@ -626,6 +635,7 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
 #' @NoRd
 predict <- function(embeddings, model, modelName) {
   # Predict the values
+  print(model)
   predictions <- text::textPredict(
     model,
     embeddings[, 2:ncol(embeddings)]
@@ -813,7 +823,36 @@ generate_legend_html <- function(limits, palette) {
   return(legend_html)
 }
 
-generateDocument <- function(data, embeddings, target, modelName, limits, palette = NULL) {
+generate_histogram_html <- function(targets) {
+  # Create the histogram using ggplot2
+  p <- ggplot2::ggplot(targets, aes(x = values)) +
+    geom_histogram(binwidth = 2, fill = "blue", alpha = 0.7, color = "black") +
+    labs(
+      title = "Histogram of Values",
+      x = "Values",
+      y = "Frequency"
+    ) +
+    theme_minimal()
+
+  # Convert ggplot to a plotly object
+  p_interactive <- plotly::ggplotly(p)
+
+  # Save the plot as an HTML widget
+  return (htmltools::tags$div(
+    HTML(htmlwidgets::saveWidget(p_interactive, "temp_plot.html", selfcontained = TRUE)),
+    style = "width: 100%; height: 500px;"
+  ))
+}
+
+generateDocument <- function(
+  data,
+  embeddings,
+  target,
+  modelName,
+  limits,
+  palette = NULL,
+  filePath = "output.html"
+) {
   #Get the color codes for each value
   data <- createColoredTibble(data, limits, palette)
   # Get the rows for the CLS and SEP tokens
@@ -862,7 +901,7 @@ generateDocument <- function(data, embeddings, target, modelName, limits, palett
   )
 
   # Save the HTML
-  save_html(full_html, "output.html")
+  save_html(full_html, filePath)
 
   return(htmltools::browsable(full_html))
 

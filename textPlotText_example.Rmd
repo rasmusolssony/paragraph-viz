@@ -52,10 +52,10 @@ tokenizer <- getTokenizer(nameLLM)
 # Import data
 
 ```{r data import, echo=TRUE}
-data <- dep_wor_data
+data <- read_csv("dataset.csv")
 text_set <- "Deptext"
-scale_total <- "PHQ9tot"
-data_length <- 50
+scale_total <- "PHQtot"
+data_length <- nrow(data)
 print(nrow(data)) # 40 records
 ```
 # Restore punctuations 
@@ -63,7 +63,7 @@ print(nrow(data)) # 40 records
 ```{r restore punctuations, echo=TRUE}
 # Choose harmonytexts as the visualization target in this example.
 data <- data[,c(text_set, scale_total)]
-
+print(data)
 # Only needed if one finds the missing of puncuations in the text.
 # !!!! After running this code, a restart of the R console is needed. Plan to fix in the future.
 if (FALSE){
