@@ -26,9 +26,13 @@ if (FALSE){
 }
 
 library(tidyverse)
-library(text)
+devtools::load_all("../text")
 library(topics)
 library(future)
+library(ggplot2)
+library(plotly)
+library(htmltools)
+library(pandoc)
 
 plan(multisession)
 
@@ -47,7 +51,7 @@ options(future.globals.maxSize = 1.0 * 1e10)
 ```{r data import, echo=TRUE}
 # supported models: bert, roberta base models, mxbai
 nameLLM <- "bert-base-uncased"
-# nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
+#nameLLM <- "Alibaba-NLP/gte-large-en-v1.5"
 # nameLLM <- "jxm/cde-small-v2"
 
 text_set <- "Deptext"
@@ -59,19 +63,21 @@ data <- dep_wor_data
 data <- data[, c(text_set, scale_total)]
 data <- drop_na(data)
 
-data_length <- 21
+data_length <- 20
 # size of train and test sets
 test_size <- 1
 train_size <- data_length - test_size
 
-model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size, "-lasso") # nolint: line_length_linter.
-save_model <- TRUE
-force_train <- TRUE
+model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size, "-trimodel") # nolint: line_length_linter.
+embeddings_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size)
+save_model <- FALSE
+save_embeddings <- FALSE
+force_train <- FALSE
 ```
 
 # Create embeddings
 ```{r train, echo=TRUE}
-if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
+if(!file.exists(paste0(embeddings_folder_path, "/embeddings.rds")) || force_train){
 
   embed <- createEmbeddings(
                       data[(test_size+1):data_length, text_set],
@@ -79,8 +85,18 @@ if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
                       device = "gpu", # cpu, gpu, mps
                       dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
                       embedSentences = FALSE, # Should be false for paragraph level training
-                      "both"
+                      "both",
+                      trust_remote_code = TRUE,
   )
+
+  if (save_embeddings) {
+    if(!dir.exists(file.path(embeddings_folder_path))){
+      dir.create(file.path(embeddings_folder_path))
+    }
+    saveRDS(embed, paste0(embeddings_folder_path, "/embeddings.rds"))
+  }
+} else {
+  embed <- readRDS(paste0(embeddings_folder_path, "/embeddings.rds"))
 }
 ```
 
@@ -90,9 +106,8 @@ if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
   theModels <- trainLanguageModel(embed, # embedding
                         data[(test_size+1):data_length, scale_total], # scale values, target
-                        "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
-                        modelName = nameLLM,
-                        mixture = c(1)
+                        "all", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
+                        modelName = nameLLM
   )
 
   if (save_model) {
@@ -109,22 +124,34 @@ if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
 # Predict and plot
 ```{r pred and plot, echo=TRUE}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+paragraphs_to_plot <- 1:50
 
-#theModels$paragraphModel$model_description[nrow(theModels$paragraphModel$model_description) + 1,] <- c("max_token_to_sentence = 4")
-paragraph_to_plot <- 1
-
-toPredEmbed <- createEmbeddings(data[paragraph_to_plot,text_set],
+toPredEmbed <- createEmbeddings(data[paragraphs_to_plot,text_set],
                          model=nameLLM,
                          dim_name=FALSE,
                          device="gpu",
                          embedSentences = TRUE,
-                         includeCLSSEP="both")
+                         includeCLSSEP="both",
+                         trust_remote_code = TRUE)
 output <- predictLanguage(toPredEmbed, theModels, "all", nameLLM)
 
- #plot <- generateDocument(output, toPredEmbed, data[paragraph_to_plot, scale_total], nameLLM, limits = c(0, 27), filePath = paste0(model_folder_path, "/plot_paragraph_", paragraph_to_plot, ".html"))
- #plot
+#plot <- generateDocument(output, toPredEmbed, data[paragraph_to_plot, scale_total], nameLLM, limits = c(0, 27), filePath = paste0(model_folder_path, "/plot_paragraph_", paragraph_to_plot, ".html"))
+#plot
 ```
 
 ```{r}
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+
+plot <- generateDocument(output, toPredEmbed, data[paragraphs_to_plot, scale_total], nameLLM, limits = c(0, 27), filePath = paste0(model_folder_path, "/plot_paragraphs_", paragraphs_to_plot[1], "-", paragraphs_to_plot[length(paragraphs_to_plot)], ".html"))
+plot
+
+print(theModels)
 #only here for run above button
 ```

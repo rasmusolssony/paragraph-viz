@@ -67,12 +67,14 @@ createEmbeddings <- function(texts,
                              device = "gpu",
                              dim_name = FALSE,
                              embedSentences = TRUE,
-                             includeCLSSEP = "both") {
+                             includeCLSSEP = "both",
+                             ...) {
   embeddings <- text::textEmbed(
     texts = texts,
     model = modelName,
     device = device,
-    dim_name = dim_name
+    dim_name = dim_name,
+    ...
   )
 
   embeddings[["tokens"]] <- embeddings[["tokens"]][[1]]
@@ -215,16 +217,16 @@ getTrainableWords <- function(embeddings, targets = NULL,
   tokenizer <- getTokenizer(modelName)
 
   # Combine tokens and targets
-  if(!is.null(targets)) {
+  if (!is.null(targets)) {
     tokenTibble <- furrr::future_pmap_dfr(
       list(embeddings, targets[[1]]),
       function(tokens, target) {
         cbind(target = target, tokens)
       }
     )
-  } else{
+  } else {
     #TODO: Fix better solution for this
-    tokenTibble <- embeddings[[1]]
+    tokenTibble <- embeddings
   }
   # Filter out special tokens (CLS, SEP, etc.)
   tokenTibble <- tokenTibble %>% dplyr::filter(tokens != start_token)
@@ -545,13 +547,12 @@ getTrainableParagraphs <- function(embeddings, targets) {
 #' @param tibble The tibble of embeddings and targets.
 #' @retrun The trained model
 #' @NoRd
-train <- function(tibble, mixture = c(0)) {
+train <- function(tibble, ...) {
   # Train the model
   model <- text::textTrainRegression(
     x = tibble[, 3:ncol(tibble)],
     y = tibble[, 1],
-    impute_missing = TRUE,
-    #mixture = mixture,
+    ...
   )
 
   return(model)
@@ -568,7 +569,7 @@ train <- function(tibble, mixture = c(0)) {
 #' @return The trained model
 #' @NoRd
 trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
-                               modelName, mixture = 0) {
+                               modelName, ...) {
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "paragraph"
   }
@@ -577,7 +578,7 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
     "token" = {
       futureTokenModel <- future::future(
         getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
-          train(mixture)
+          train(...)
       )
       tokenModel <- future::value(futureTokenModel)
       return(list("tokenModel" = tokenModel))
@@ -585,36 +586,31 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
     "sentence" = {
       futureSentenceModel <- future::future(
         getTrainableSentences(embeddings[["sentences"]], targets) %>%
-          train(mixture)
+          train(...)
       )
       sentenceModel <- future::value(futureSentenceModel)
       return(list("sentenceModel" = sentenceModel))
     },
     "paragraph" = {
-      futureParagraphModel <-
+      paragraphModel <-
         getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
-        train(mixture)
+        train(...)
 
-      paragraphModel <- futureParagraphModel
       return(list("paragraphModel" = paragraphModel))
     },
     "all" = {
-
-      futureTokenModel <- future::future(
+      print("Training tokenmodel")
+      tokenModel <-
         getTrainableWords(embeddings[["tokens"]], targets, modelName) %>%
-          train(mixture)
-      )
-      futureSentenceModel <- future::future(
+        train(...)
+      print("Training sentencemodel")
+      sentenceModel <-
         getTrainableSentences(embeddings[["sentences"]], targets) %>%
-          train(mixture)
-      )
-      futureParagraphModel <- future::future(
+        train(...)
+      print("Training paragraphmodel")
+      paragraphModel <-
         getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
-          train(mixture)
-      )
-      tokenModel <- future::value(futureTokenModel)
-      sentenceModel <- future::value(futureSentenceModel)
-      paragraphModel <- future::value(futureParagraphModel)
+        train(...)
 
       return(list(
         "tokenModel" = tokenModel,
@@ -633,12 +629,12 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
 #' @param modelName (str) The transformer model.
 #' @return The token predictions
 #' @NoRd
-predict <- function(embeddings, model, modelName) {
+predict <- function(embeddings, model, modelName, ...) {
   # Predict the values
-  print(model)
   predictions <- text::textPredict(
-    model,
-    embeddings[, 2:ncol(embeddings)]
+    model_info = model,
+    word_embeddings = embeddings[, 2:ncol(embeddings)],
+    ...
   )
 
   # Combine the predictions with the embeddings
@@ -660,7 +656,7 @@ predict <- function(embeddings, model, modelName) {
 #' @return The prediction R object
 #' @NoRd
 predictLanguage <- function(embeddings, models, languageLevel = "all",
-                            modelName) {
+                            modelName, ...) {
   if (!(languageLevel %in% c("sentence", "token", "paragraph", "all"))) {
     languageLevel <- "all"
   }
@@ -668,28 +664,38 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
   switch(languageLevel,
     "token" = {
       tokenPredictions <-
-        getTrainableWords(embeddings[["tokens"]], NULL, modelName) %>%
-        predict(models[["paragraphModel"]])
+        lapply(embeddings[["tokens"]], function(tokenEmbedding) {
+          tokenEmbedding %>%
+            getTrainableWords(NULL, modelName) %>%
+            predict(models[["paragraphModel"]], ...)
+
+        })
       return(list("tokens" = tokenPredictions))
     },
     "sentence" = {
       sentencePredicitons <-
-        predict(embeddings[["sentences"]][[1]], models[["paragraphModel"]])
+        lapply(embeddings[["sentences"]], predict, 
+               models[["paragraphModel"]], ...)
       return(list("sentences" = sentencePredicitons))
     },
     "paragraph" = {
       paragraphPredictions <-
-        predict(embeddings[["paragraphs"]], models[["paragraphModel"]])
+        predict(embeddings[["paragraphs"]], models[["paragraphModel"]], ...)
       return(list("paragraphs" = paragraphPredictions))
     },
     "all" = {
       tokenPredictions <-
-        getTrainableWords(embeddings[["tokens"]], NULL, modelName) %>%
-        predict(models[["paragraphModel"]])
+        lapply(embeddings[["tokens"]], function(tokenEmbedding) {
+          tokenEmbedding %>%
+            getTrainableWords(NULL, modelName) %>%
+            predict(models[["tokenModel"]], ...)
+
+        })
       sentencePredicitons <-
-        predict(embeddings[["sentences"]][[1]], models[["paragraphModel"]])
+        lapply(embeddings[["sentences"]], predict,
+               models[["sentenceModel"]], ...)
       paragraphPredictions <-
-        predict(embeddings[["paragraphs"]], models[["paragraphModel"]])
+        predict(embeddings[["paragraphs"]], models[["paragraphModel"]], ...)
       return(list(
         "tokens" = tokenPredictions,
         "sentences" = sentencePredicitons,
@@ -733,14 +739,16 @@ generate_gradient <- function(values, lower_limit, upper_limit, palette = NULL) 
 
 createColoredTibble <- function(predictions, limits, palette = NULL) {
   # Generate color codes for each value
-  predictions$tokens$colorCodes <-
-    generate_gradient(predictions$tokens$predicted_value,
-                      limits[1], limits[2], palette)
-
-  predictions$sentences$colorCodes <-
-    generate_gradient(predictions$sentences$predicted_value,
-                      limits[1], limits[2], palette)
-
+  predictions$tokens <- lapply(predictions$tokens, function(tokens) {
+    tokens %>%
+      mutate(colorCodes = generate_gradient(predicted_value,
+                                            limits[1], limits[2], palette))
+  })
+  predictions$sentences <- lapply(predictions$sentences, function(sentences) {
+    sentences %>%
+      mutate(colorCodes = generate_gradient(predicted_value,
+                                            limits[1], limits[2], palette))
+  })
   predictions$paragraphs$colorCodes <-
     generate_gradient(predictions$paragraphs$predicted_value,
                       limits[1], limits[2], palette)
@@ -769,6 +777,48 @@ generate_tokens_html <- function(tokens) {
   do.call(tagList, token_html)
 }
 
+generate_tokens_htmls <- function(tokens, tokenEmbeddings, modelName) {
+  tokens_htmls <- lapply(seq_along(tokens), function(i) {
+    tokens_row <- tokens[[i]]
+    embeddings_row <- tokenEmbeddings[[i]]
+
+    # Get the rows for the CLS and SEP tokens
+    rows <- getCLSSEPTokenRows(embeddings_row, modelName)
+    rows <- split(rows, seq(nrow(rows)))
+
+    # Generate the full document
+    subword_sign <- get_subword_sign(modelName)
+    word_starts <- sapply(embeddings_row$tokens,
+                          is_word_start,
+                          subword_sign)
+    start <- 1
+
+    tokens_html <- lapply(rows, function(row) {
+      # Get the CLS and SEP range for this sentence
+      range <- getStartAndEndRow(includeCLSSEP = "none", row$CLS, row$SEP)
+
+      # Calculate the end index for this range
+      end <- start + sum(word_starts[range[[1]]:range[[2]]]) - 1
+
+      # Subset tokens for this range
+      subset_tokens <- tokens_row[start:end, ]
+   
+      # Update start for the next iteration
+      start <<- end + 1
+
+      # Generate HTML for these tokens
+      html <- generate_tokens_html(subset_tokens)
+
+      return(html)
+    })
+
+    return(unname(tokens_html))
+  })
+
+
+  return(tokens_htmls)
+}
+
 # Generate HTML for sentences
 generate_sentences_html <- function(sentences, tokens_html) {
   sentences <- split(sentences, seq(nrow(sentences)))
@@ -787,15 +837,20 @@ generate_sentences_html <- function(sentences, tokens_html) {
 }
 
 # Generate paragraph HTML
-generate_paragraph_html <- function(paragraph, sentences_html) {
-  div(
-    style = paste0(
-      "background-color:", paragraph$colorCodes, ";",
-      "padding: 10px;", # Padding for the paragraph
-      "margin-bottom: 10px;" # Space between paragraphs
-    ),
-    title = paste("Predicted value: ", paragraph$predicted_value), # Hover text
-    sentences_html
+generate_paragraph_html <- function(paragraph, sentences_html, target) {
+  return(
+    div(
+      style = paste0(
+        "background-color:", paragraph$colorCodes, ";",
+        "padding: 10px;", # Padding for the paragraph
+        "margin-bottom: 10px;" # Space between paragraphs
+      ),
+      title = paste("Predicted value: ", paragraph$predicted_value), # Hover text
+      sentences_html,
+      tags$h3("Predicted score: ",
+              trunc(paragraph$predicted_value * 10^2) / 10^2,
+              ", True score: ", target),
+    )
   )
 }
 
@@ -823,80 +878,120 @@ generate_legend_html <- function(limits, palette) {
   return(legend_html)
 }
 
-generate_histogram_html <- function(targets) {
+generate_histogram_html <- function(data) {
   # Create the histogram using ggplot2
-  p <- ggplot2::ggplot(targets, aes(x = values)) +
+  p <- ggplot2::ggplot(data, aes(x = predicted_value)) +
     geom_histogram(binwidth = 2, fill = "blue", alpha = 0.7, color = "black") +
     labs(
-      title = "Histogram of Values",
-      x = "Values",
+      title = "Histogram of tokens predicted values",
+      x = "Predicted Values",
       y = "Frequency"
     ) +
     theme_minimal()
 
   # Convert ggplot to a plotly object
-  p_interactive <- plotly::ggplotly(p)
+  histogram_html <- div(
+    style = "margin-top: 10px;",
+    plotly::ggplotly(p)
+  )
 
   # Save the plot as an HTML widget
-  return (htmltools::tags$div(
-    HTML(htmlwidgets::saveWidget(p_interactive, "temp_plot.html", selfcontained = TRUE)),
-    style = "width: 100%; height: 500px;"
-  ))
+  return(histogram_html)
 }
 
 generateDocument <- function(
   data,
   embeddings,
-  target,
+  targets,
   modelName,
   limits,
   palette = NULL,
   filePath = "output.html"
 ) {
-  #Get the color codes for each value
+  # Get the color codes for each value
   data <- createColoredTibble(data, limits, palette)
-  # Get the rows for the CLS and SEP tokens
-  rows <- getCLSSEPTokenRows(embeddings[["tokens"]][[1]], modelName)
-  rows <- split(rows, seq(nrow(rows)))
 
-  # Generate the full document
-  subword_sign <- get_subword_sign(modelName)
-  word_starts <- sapply(embeddings[["tokens"]][[1]][["tokens"]], is_word_start,
-                        subword_sign)
-  start <- 1
+  # Generate list of tokens htmls. One for each paragraph.
+  tokens_htmls <-
+    generate_tokens_htmls(data$tokens, embeddings$tokens, modelName)
 
-  tokens_html <- lapply(rows, function(row) {
-    # Get the CLS and SEP range for this sentence
-    range <- getStartAndEndRow(includeCLSSEP = "none", row$CLS, row$SEP)
+  # Generate list of sentences htmls. One for each paragraph.
+  sentences_htmls <- mapply(function(sentences, tokens_html) {
+    generate_sentences_html(sentences, tokens_html)
+  }, data$sentences, tokens_htmls, SIMPLIFY = FALSE)
 
-    # Calculate the end index for this range
-    end <- start + sum(word_starts[range[[1]]:range[[2]]]) - 1
+  # Generate list of paragraph htmls.
+  paragraph_htmls <- mapply(function(paragraph, sentences_html, target) {
+    generate_paragraph_html(paragraph, sentences_html, target)
+  }, split(data$paragraph, seq_len(nrow(data$paragraph))),
+  sentences_htmls, split(targets, seq_len(nrow(targets))), SIMPLIFY = FALSE)
 
-    # Subset tokens for this range
-    tokens <- data$tokens[start:end, ]
-
-    # Update start for the next iteration
-    start <<- end + 1
-
-    # Generate HTML for these tokens
-    return(generate_tokens_html(tokens))
-  })
-  sentences_html <- generate_sentences_html(data$sentences, tokens_html)
-
-  paragraph_html <- generate_paragraph_html(data$paragraph, sentences_html)
-
+  # Generate the legend
   legend_html <- generate_legend_html(limits, palette)
+
+  # Generate list of histogram htmls. One for each paragraph.
+  histogram_htmls <- lapply(data$tokens, generate_histogram_html)
+
+  # Create dropdown menu for paragraph selection
+  dropdown_menu <- tags$select(
+    id = "paragraphSelector",
+    style = "margin-bottom: 10px;",
+    onchange = "showSelectedParagraph()",
+    lapply(1:length(paragraph_htmls), function(i) {
+      tags$option(value = i, paste("Paragraph", i))
+    })
+  )
+  # Wrap paragraphs and histograms in divs with unique IDs
+  paragraph_htmls <- lapply(1:length(paragraph_htmls), function(i) {
+    tags$div(
+      id = paste0("paragraph", i),
+      style = ifelse(i == 1, "display: block;", "display: none;"),
+      paragraph_htmls[[i]]
+    )
+  })
+  histogram_htmls <- lapply(1:length(histogram_htmls), function(i) {
+    tags$div(
+      id = paste0("histogram", i),
+      style = ifelse(i == 1, "display: block;", "display: none;"),
+      histogram_htmls[[i]]
+    )
+  })
+
+  # JavaScript to handle paragraph selection
+  js_code <- tags$script(HTML("
+    function showSelectedParagraph() {
+      var selectedParagraph = document
+        .getElementById('paragraphSelector').value;
+      var paragraphs = document.querySelectorAll('[id^=paragraph]');
+      var histograms = document.querySelectorAll('[id^=histogram]');
+      paragraphs.forEach(function(paragraph) {
+        paragraph.style.display = 'none';
+      });
+      histograms.forEach(function(histogram) {
+        histogram.style.display = 'none';
+      })
+      document
+        .getElementById('paragraph' + selectedParagraph)
+        .style.display = 'block';
+      document
+        .getElementById('paragraphSelector')
+        .style.display = 'block';
+      document
+        .getElementById('histogram' + selectedParagraph)
+        .style.display = 'block';
+    }
+  "))
 
   # Wrap in a basic HTML structure
   full_html <- tags$html(
     tags$head(tags$title("Text Visualization")),
     tags$body(
       tags$h1("Text Prediction Visualization"),
-      paragraph_html,
+      dropdown_menu,
+      paragraph_htmls,
       legend_html,
-      tags$h3("Predicted score: ",
-              trunc(data$paragraph$predicted_value * 10^2) / 10^2,
-              ", True score: ", target),
+      histogram_htmls,
+      js_code
     )
   )
 
