@@ -50,28 +50,29 @@ options(future.globals.maxSize = 1.0 * 1e10)
 # Select model, data and parameters
 ```{r data import, echo=TRUE}
 # supported models: bert, roberta base models, mxbai
-nameLLM <- "bert-base-uncased"
+#nameLLM <- "bert-base-uncased"
+nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
 #nameLLM <- "Alibaba-NLP/gte-large-en-v1.5"
 # nameLLM <- "jxm/cde-small-v2"
 
 text_set <- "Deptext"
-scale_total <- "PHQ9tot"
+scale_total <- "PHQtot"
 # dataset: dep_wor_data
-data <- dep_wor_data
+#data <- dep_wor_data
 # extended dataset
-#data <- read_csv("dataset.csv")
+data <- read_csv("dataset.csv")
 data <- data[, c(text_set, scale_total)]
 data <- drop_na(data)
 
-data_length <- 20
+data_length <- nrow(data)
 # size of train and test sets
-test_size <- 1
+test_size <- 50
 train_size <- data_length - test_size
 
-model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size, "-trimodel") # nolint: line_length_linter.
+model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size, "-lasso") # nolint: line_length_linter.
 embeddings_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size)
-save_model <- FALSE
-save_embeddings <- FALSE
+save_model <- TRUE
+save_embeddings <- TRUE
 force_train <- FALSE
 ```
 
@@ -106,8 +107,9 @@ if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
 
   theModels <- trainLanguageModel(embed, # embedding
                         data[(test_size+1):data_length, scale_total], # scale values, target
-                        "all", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
-                        modelName = nameLLM
+                        "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
+                        modelName = nameLLM,
+                        mixture = c(1)
   )
 
   if (save_model) {

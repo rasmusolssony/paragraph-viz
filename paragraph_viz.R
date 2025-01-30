@@ -688,12 +688,12 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
         lapply(embeddings[["tokens"]], function(tokenEmbedding) {
           tokenEmbedding %>%
             getTrainableWords(NULL, modelName) %>%
-            predict(models[["tokenModel"]], ...)
+            predict(models[["paragraphModel"]], ...)
 
         })
       sentencePredicitons <-
         lapply(embeddings[["sentences"]], predict,
-               models[["sentenceModel"]], ...)
+               models[["paragraphModel"]], ...)
       paragraphPredictions <-
         predict(embeddings[["paragraphs"]], models[["paragraphModel"]], ...)
       return(list(
