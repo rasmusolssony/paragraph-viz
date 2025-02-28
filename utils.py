@@ -1,4 +1,5 @@
 from transformers import AutoTokenizer
+import torch
 
 def get_subword_sign(model_name):
     tokenizer = AutoTokenizer.from_pretrained(model_name)

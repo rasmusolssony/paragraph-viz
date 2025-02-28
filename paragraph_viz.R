@@ -1,7 +1,7 @@
 # refactor based on the online doc
 # Using inline js pack to run via htmltools: https://rstudio.github.io/htmltools/reference/htmlDependency.html
 
-#'Punctuates a string of text.
+#' Punctuates a string of text.
 #' @param str (string) The string to be marked by full stop transformer model.
 #' @importFrom reticulate source_python
 #' @return A list of sentences
@@ -10,7 +10,7 @@ punctuate_text <- function(str) {
   return(reticulate::fullstopCorrt(str))
 }
 #' Punctuates a list of strings in a tibble.
-#' @param texts (tibble) The tibble contains a list of 
+#' @param texts (tibble) The tibble contains a list of
 #' texts to be split into sentences.
 #' @importFrom furrr future_pmap
 #' @return A tibble of the list of sentences
@@ -156,8 +156,10 @@ is_word_start <- function(token, subword_sign = "##") {
 getSubWordIDs <- function(tokens, modelName) {
   # Mark the start of each word.
   subword_sign <- get_subword_sign(modelName)
-  word_starts <- sapply(tokens, is_word_start,
-                        subword_sign)
+  word_starts <- sapply(
+    tokens, is_word_start,
+    subword_sign
+  )
 
 
   # Generate a tibble for processing
@@ -171,8 +173,10 @@ getSubWordIDs <- function(tokens, modelName) {
   result <- subword_tibble %>%
     mutate(group = cumsum(is_start)) %>%
     group_by(group) %>%
-    summarize(start_row = min(index), end_row = max(index),
-              .groups = "drop") %>%
+    summarize(
+      start_row = min(index), end_row = max(index),
+      .groups = "drop"
+    ) %>%
     filter(start_row != end_row) %>%
     select(start_row, end_row)
 
@@ -190,7 +194,9 @@ getSubWordIDs <- function(tokens, modelName) {
 #' @noRd
 combineSubWords <- function(tokens, subwordIDs,
                             tokenizer, modelName, divideByAll) {
-  if (is.null(subwordIDs)) return(tokens)
+  if (is.null(subwordIDs)) {
+    return(tokens)
+  }
 
   for (row in seq_len(nrow(subwordIDs))) {
     start <- subwordIDs$start_row[row]
@@ -248,13 +254,13 @@ getTrainableWords <- function(embeddings, targets = NULL,
       }
     )
   } else {
-    #TODO: Fix better solution for this
+    # TODO: Fix better solution for this
     tokenTibble <- embeddings
   }
 
   if (divideByAll) {
-   tokenTibble[, 3:ncol(tokenTibble)] <-
-    tokenTibble[, 3:ncol(tokenTibble)] / nrow(tokenTibble)
+    tokenTibble[, 3:ncol(tokenTibble)] <-
+      tokenTibble[, 3:ncol(tokenTibble)] / nrow(tokenTibble)
   }
 
   # Filter out special tokens (CLS, SEP, etc.)
@@ -264,8 +270,10 @@ getTrainableWords <- function(embeddings, targets = NULL,
   # Combine subwords into words.
   if (combineSubwords) {
     subword_ids <- getSubWordIDs(tokenTibble[["tokens"]], modelName)
-    tokenTibble <- combineSubWords(tokenTibble, subword_ids,
-                                   tokenizer, modelName, divideByAll)
+    tokenTibble <- combineSubWords(
+      tokenTibble, subword_ids,
+      tokenizer, modelName, divideByAll
+    )
   }
 
   return(tokenTibble %>% tibble::as_tibble())
@@ -286,8 +294,12 @@ getStartAndEndRow <- function(includeCLSSEP, rowCLS, rowSEP) {
   endRow <- rowSEP
 
   switch(includeCLSSEP,
-    "CLS" = { endRow <- rowSEP - 1 },
-    "SEP" = { startRow <- rowCLS + 1 },
+    "CLS" = {
+      endRow <- rowSEP - 1
+    },
+    "SEP" = {
+      startRow <- rowCLS + 1
+    },
     "none" = {
       startRow <- rowCLS + 1
       endRow <- rowSEP - 1
@@ -303,7 +315,6 @@ getStartAndEndRow <- function(includeCLSSEP, rowCLS, rowSEP) {
 #' @return A tibble of row number of tokens.
 #' @NoRd
 getCLSSEPTokenRows <- function(tokenEmbeddings, modelName) {
-
   # Get the start and end tokens
   start_token <- get_start_token(modelName)
   end_token <- get_end_token(modelName)
@@ -340,8 +351,10 @@ initSentenceTibble <- function(tokenEmbeddings, modelName) {
   clsSepRows <- getCLSSEPTokenRows(tokenEmbeddings, modelName)
 
   # Initialize a new tibble for sentences
-  sentenceTibble <- matrix(nrow = nrow(clsSepRows), 
-                           ncol = ncol(tokenEmbeddings)) %>%
+  sentenceTibble <- matrix(
+    nrow = nrow(clsSepRows),
+    ncol = ncol(tokenEmbeddings)
+  ) %>%
     as.data.frame() %>%
     tibble::as_tibble()
 
@@ -371,20 +384,25 @@ initSentenceTibble <- function(tokenEmbeddings, modelName) {
 #' @return A sentence tibble.
 #' @NoRd
 transformTokensToSentence <- function(sentence, rowCLS,
-                        rowSEP, tokenEmbeddings,
-                        tokenizer, modelName, includeCLSSEP) {
+                                      rowSEP, tokenEmbeddings,
+                                      tokenizer, modelName,
+                                      includeCLSSEP) {
   if (!reticulate::py_has_attr(tokenizer, "convert_tokens_to_ids") ||
-        !reticulate::py_has_attr(tokenizer, "decode")) {
+    !reticulate::py_has_attr(tokenizer, "decode")) {
     tokenizer <- getTokenizer(modelName)
   }
+
   # Determine the start and end rows based on includeCLSSEP parameter
   rows <- getStartAndEndRow(includeCLSSEP, rowCLS, rowSEP)
   startRow <- rows[[1]]
   endRow <- rows[[2]]
+
   # Decode the token embeddings to a sentence
   sentence <-
-    decodeToken(tokenEmbeddings[["tokens"]][startRow:endRow],
-                tokenizer, modelName)
+    decodeToken(
+      tokenEmbeddings[["tokens"]][startRow:endRow],
+      tokenizer, modelName
+    )
 
   return(sentence)
 }
@@ -400,7 +418,7 @@ transformTokensToSentence <- function(sentence, rowCLS,
 #' @NoRd
 averageTokenEmbeddings <- function(sentenceEmbeddings, rowCLS,
                                    rowSEP, tokenEmbeddings,
-                                   includeCLSSEP, 
+                                   includeCLSSEP,
                                    nParagraphTokens = NULL) {
   # Determine the start and end rows based on includeCLSSEP parameter
   rows <- getStartAndEndRow(includeCLSSEP, rowCLS, rowSEP)
@@ -408,7 +426,7 @@ averageTokenEmbeddings <- function(sentenceEmbeddings, rowCLS,
   endRow <- rows[[2]]
 
   # Calculate the average token embeddings in a sentence
-  if(is.null(nParagraphTokens)) {
+  if (is.null(nParagraphTokens)) {
     sentenceEmbeddings <-
       tokenEmbeddings[startRow:endRow, 2:ncol(tokenEmbeddings)] %>%
       as.matrix() %>%
@@ -450,10 +468,9 @@ tokensToSentences <- function(tokenEmbeddings, tokenizer,
                               modelName = "bert-base-uncased",
                               includeCLSSEP = "both",
                               nParagraphTokens = NULL) {
-
   # Ensure the tokenizer has the necessary attributes
   if (!reticulate::py_has_attr(tokenizer, "convert_tokens_to_ids") ||
-        !reticulate::py_has_attr(tokenizer, "decode")) {
+    !reticulate::py_has_attr(tokenizer, "decode")) {
     tokenizer <- getTokenizer(modelName)
   }
 
@@ -509,7 +526,6 @@ tokensToSentences <- function(tokenEmbeddings, tokenizer,
   return(sentenceTibble)
 }
 
-#' TODO: DOES THIS ACTUALLY REMOVE SPECIAL TOKEN COLUMNS?
 #' Remove columns of special tokens.
 #' @param sentenceEmbeddings The output from token2Sent_getSent.
 #' @return Text embeddings without special token columns.
@@ -518,12 +534,36 @@ removeSpecialTokenColumns <- function(sentenceEmbeddings) {
   return(sentenceEmbeddings[, 3:ncol(sentenceEmbeddings)])
 }
 
+assignSentenceIndexToTokens <- function(embeddings, modelName, includeCLSSEP) {
+  embeddings[["tokens"]] <- lapply(embeddings[["tokens"]], function(embedding) {
+    embedding <- tibble::add_column(
+      embedding,
+      sentence_idx = rep(NA, nrow(embedding)),
+      .after = 1
+    )
+    # Get the rows for CLS and SEP tokens
+    clsSepRows <- getCLSSEPTokenRows(embedding, modelName)
+    clsSepRows <- split(clsSepRows, seq(nrow(clsSepRows)))
+    for (i in seq_along(clsSepRows)) {
+      rowCLS <- clsSepRows[i][[1]]$CLS
+      rowSEP <- clsSepRows[i][[1]]$SEP
+      # Determine the start and end rows based on includeCLSSEP parameter
+      rows <- getStartAndEndRow(includeCLSSEP, rowCLS, rowSEP)
+      startRow <- rows[[1]]
+      endRow <- rows[[2]]
+      embedding[startRow:endRow, "sentence_idx"] <- i
+    }
+    return(embedding %>% as_tibble())
+  })
+  return(embeddings)
+}
+
 #' Get the tibble of sentence embeddings.
 #' @param tokenList The input list of token embeddings.
-#' @param tokenizer The tokenizer used in function textEmbed 
+#' @param tokenizer The tokenizer used in function textEmbed
 #' to get token embeddings.
 #' @param modelName The name of the used tokenizer.
-#' @param includeCLSSEP To include the embeddings of "start", 
+#' @param includeCLSSEP To include the embeddings of "start",
 #' "end", "both", or "none".
 #' @return A list containing token embeddings of the function textEmbed()
 #'  along with sentence embeddings.
@@ -532,8 +572,10 @@ addSentenceEmbeddings <- function(embeddings,
                                   modelName = "bert-base-uncased",
                                   includeCLSSEP = "both",
                                   nParagraphTokens = NULL) {
-
   tokenizer <- getTokenizer(modelName)
+  embeddings <- assignSentenceIndexToTokens(
+    embeddings, modelName, includeCLSSEP
+  )
 
   # Generate sentence embeddings
   if (is.null(nParagraphTokens)) {
@@ -569,8 +611,9 @@ addSentenceEmbeddings <- function(embeddings,
 
   # Append the combined sentence embeddings to the original list
   embeddings <- append(
-    embeddings, 
-    list("sentences" = lapply(sentenceEmbeddings, tibble::as_tibble)))
+    embeddings,
+    list("sentences" = lapply(sentenceEmbeddings, tibble::as_tibble))
+  )
 
   return(embeddings)
 }
@@ -582,7 +625,7 @@ addSentenceEmbeddings <- function(embeddings,
 #' @return The tibble of sentence embeddings.
 #' @NoRd
 getTrainableSentences <- function(embeddings, targets) {
-  if(!is.null(targets)) {
+  if (!is.null(targets)) {
     sentenceTibble <- furrr::future_pmap_dfr(
       list(embeddings, targets[[1]]),
       function(sentences, target) {
@@ -602,7 +645,7 @@ getTrainableSentences <- function(embeddings, targets) {
 #' @return The trained model of passages and their prediction targets.
 #' @NoRd
 getTrainableParagraphs <- function(embeddings, targets) {
-  if(!is.null(targets)) {
+  if (!is.null(targets)) {
     paragraphTibble <- cbind(targets, embeddings) %>%
       tibble::as_tibble()
   }
@@ -691,28 +734,6 @@ trainLanguageModel <- function(embeddings, targets, languageLevel = "paragraph",
 }
 
 #### Prediction functions ####
-#' Get the predictions of tokens, sentences, or paragraphs.
-#' @param embeddings An R obj containing the embeddings of
-#' "token", "sentence",  or "passage".
-#' @param model A trained token model.
-#' @param modelName (str) The transformer model.
-#' @return The token predictions
-#' @NoRd
-predict <- function(embeddings, model, modelName, ...) {
-  # Predict the values
-  predictions <- text::textPredict(
-    model_info = model,
-    word_embeddings = embeddings[, 2:ncol(embeddings)],
-    ...
-  )
-
-  # Combine the predictions with the embeddings
-  predictions <- predictions %>% tibble::as_tibble()
-  colnames(predictions)[1] <- c("predicted_value")
-  predictions <- cbind(embeddings[, 1], predictions)
-
-  return(predictions %>% tibble::as_tibble())
-}
 
 #' Get the predictions of the language model.
 #' @param embeddings An R obj containing the embeddings of
@@ -733,38 +754,73 @@ predictLanguage <- function(embeddings, models, languageLevel = "all",
   switch(languageLevel,
     "token" = {
       tokenPredictions <-
-        lapply(embeddings[["tokens"]], function(tokenEmbedding) {
-          tokenEmbedding %>%
+        lapply(embeddings$tokens, function(tokenEmbedding) {
+          predictions <- tokenEmbedding %>%
             getTrainableWords(NULL, modelName, divideByAll = TRUE) %>%
-            predict(models[["paragraphModel"]], ...)
-
+            text::textPredict(
+              model_info = models$paragraphModel,
+              word_embeddings = tokenEmbedding[, 3:ncol(tokenEmbedding)],
+              ...
+            )
+          cbind(tokenEmbedding[, 1:2], predicted_value = predictions)
         })
       return(list("tokens" = tokenPredictions))
     },
     "sentence" = {
       sentencePredicitons <-
-        lapply(embeddings[["sentences"]], predict,
-               models[["paragraphModel"]], ...)
+        lapply(embeddings$sentences, function(sents) {
+          predictions <- text::textPredict(
+            model_info = models$paragraphModel,
+            word_embeddings = sents[, 2:ncol()],
+            ...
+          )
+          cbind(sents[, 1], predicted_value = predictions)
+        })
       return(list("sentences" = sentencePredicitons))
     },
     "paragraph" = {
+      predictions <-
+        text::textPredict(
+          models$paragraphModel,
+          embeddings$paragraphs,
+          ...
+        )
       paragraphPredictions <-
-        predict(embeddings[["paragraphs"]], models[["paragraphModel"]], ...)
+        cbind(embeddings$paragraphs[, 1], predicted_value = predictions)
       return(list("paragraphs" = paragraphPredictions))
     },
     "all" = {
       tokenPredictions <-
-        lapply(embeddings[["tokens"]], function(tokenEmbedding) {
-          tokenEmbedding %>%
-            getTrainableWords(NULL, modelName, divideByAll = divideByAll) %>%
-            predict(models[["paragraphModel"]], ...)
-
+        lapply(embeddings$tokens, function(tokenEmbedding) {
+          predictions <- tokenEmbedding %>%
+            getTrainableWords(NULL, modelName, divideByAll = TRUE) %>%
+            text::textPredict(
+              model_info = models$paragraphModel,
+              word_embeddings = tokenEmbedding[, 3:ncol(tokenEmbedding)],
+              ...
+            )
+          cbind(tokenEmbedding[, 1:2], predicted_value = predictions)
         })
       sentencePredicitons <-
-        lapply(embeddings[["sentences"]], predict,
-               models[["paragraphModel"]], ...)
+        lapply(embeddings$sentences, function(sents) {
+          predictions <- text::textPredict(
+            model_info = models$paragraphModel,
+            word_embeddings = sents[, 2:ncol()],
+            ...
+          )
+          cbind(sents[, 1], predicted_value = predictions)
+        })
       paragraphPredictions <-
-        predict(embeddings[["paragraphs"]], models[["paragraphModel"]], ...)
+        text::textPredict(
+          models$paragraphModel,
+          embeddings$paragraphs,
+          ...
+        )
+      paragraphPredictions <-
+        cbind(
+          embeddings$paragraphs[, 1],
+          predicted_value = paragraphPredictions
+        )
       return(list(
         "tokens" = tokenPredictions,
         "sentences" = sentencePredicitons,
@@ -796,8 +852,8 @@ generate_gradient <- function(values, lower_limit, upper_limit, palette = NULL) 
   }
   # Ensure limits are numeric
   if (!is.numeric(values) ||
-        !is.numeric(lower_limit) ||
-        !is.numeric(upper_limit)) {
+    !is.numeric(lower_limit) ||
+    !is.numeric(upper_limit)) {
     stop("Values and limits must be numeric.")
   }
 
@@ -833,9 +889,11 @@ createColoredTibble <- function(predictions, limits, palette = NULL, shapley) {
       lower_limit <- limits[1]
     }
     tokens %>%
-      mutate(colorCodes = generate_gradient(predicted_value,
-                                            lower_limit, upper_limit,
-                                            palette))
+      mutate(colorCodes = generate_gradient(
+        predicted_value,
+        lower_limit, upper_limit,
+        palette
+      ))
   })
   predictions$sentences <- lapply(predictions$sentences, function(sentences) {
     if (shapley) {
@@ -846,13 +904,17 @@ createColoredTibble <- function(predictions, limits, palette = NULL, shapley) {
       lower_limit <- limits[1]
     }
     sentences %>%
-      mutate(colorCodes = generate_gradient(predicted_value,
-                                            lower_limit, upper_limit,
-                                            palette))
+      mutate(colorCodes = generate_gradient(
+        predicted_value,
+        lower_limit, upper_limit,
+        palette
+      ))
   })
   predictions$paragraphs$colorCodes <-
-    generate_gradient(predictions$paragraphs$predicted_value,
-                      limits[1], limits[2], palette)
+    generate_gradient(
+      predictions$paragraphs$predicted_value,
+      limits[1], limits[2], palette
+    )
 
   return(predictions)
 }
@@ -869,7 +931,7 @@ generate_tokens_html <- function(tokens) {
       style = paste0(
         "background-color:", token$colorCodes, ";",
         "padding: 0 2px;", # Spacing around each token
-        "margin: 0 1px;"   # Space between tokens
+        "margin: 0 1px;" # Space between tokens
       ),
       title = paste("Predicted value:", token$predicted_value), # Hover text
       token$tokens
@@ -878,44 +940,15 @@ generate_tokens_html <- function(tokens) {
   do.call(tagList, token_html)
 }
 
-generate_tokens_htmls <- function(tokens, tokenEmbeddings, modelName) {
-  tokens_htmls <- lapply(seq_along(tokens), function(i) {
-    tokens_row <- tokens[[i]]
-    embeddings_row <- tokenEmbeddings[[i]]
-
-    # Get the rows for the CLS and SEP tokens
-    rows <- getCLSSEPTokenRows(embeddings_row, modelName)
-    rows <- split(rows, seq(nrow(rows)))
-
-    # Generate the full document
-    subword_sign <- get_subword_sign(modelName)
-    word_starts <- sapply(embeddings_row$tokens,
-                          is_word_start,
-                          subword_sign)
-    start <- 1
-
-    tokens_html <- lapply(rows, function(row) {
-      # Get the CLS and SEP range for this sentence
-      range <- getStartAndEndRow(includeCLSSEP = "none", row$CLS, row$SEP)
-
-      # Calculate the end index for this range
-      end <- start + sum(word_starts[range[[1]]:range[[2]]]) - 1
-
-      # Subset tokens for this range
-      subset_tokens <- tokens_row[start:end, ]
-
-      # Update start for the next iteration
-      start <<- end + 1
-
-      # Generate HTML for these tokens
-      html <- generate_tokens_html(subset_tokens)
-
-      return(html)
-    })
+generate_tokens_htmls <- function(tokens) {
+  tokens_htmls <- lapply(tokens, function(paragraph) {
+    sentences <- paragraph %>% 
+      dplyr::group_by(sentence_idx) %>%
+      dplyr::group_split()
+    tokens_html <- lapply(sentences, generate_tokens_html)
 
     return(unname(tokens_html))
   })
-
 
   return(tokens_htmls)
 }
@@ -948,19 +981,22 @@ generate_paragraph_html <- function(paragraph, sentences_html, target) {
       ),
       title = paste("Predicted value: ", paragraph$predicted_value), # Hover text
       sentences_html,
-      tags$h3("Predicted score: ",
-              trunc(paragraph$predicted_value * 10^2) / 10^2,
-              ", True score: ", target),
+      tags$h3(
+        "Predicted score: ",
+        trunc(paragraph$predicted_value * 10^2) / 10^2,
+        ", True score: ", target
+      ),
     )
   )
 }
 
-generate_legend_html <- function(lower_limit, upper_limit, 
+generate_legend_html <- function(lower_limit, upper_limit,
                                  palette, title = "Legend") {
-
   legend_values <- seq(lower_limit, upper_limit, length.out = 5)
-  legend_colors <- generate_gradient(legend_values, lower_limit,
-                                     upper_limit, palette)
+  legend_colors <- generate_gradient(
+    legend_values, lower_limit,
+    upper_limit, palette
+  )
   legend_html <- lapply(1:5, function(i) {
     span(
       style = paste0(
@@ -990,7 +1026,9 @@ generate_legend_htmls <- function(data, limits, palette) {
     lower_limit <- trunc(lower_limit * 10^3) / 10^3
 
     token_legend_html <- generate_legend_html(lower_limit, upper_limit,
-                                              palette, title = "Token Legend")
+      palette,
+      title = "Token Legend"
+    )
 
     upper_limit <- max(abs(unlist(data$sentences[[i]]$predicted_value)))
     upper_limit <- trunc(upper_limit * 10^3) / 10^3
@@ -999,9 +1037,10 @@ generate_legend_htmls <- function(data, limits, palette) {
     lower_limit <- trunc(lower_limit * 10^3) / 10^3
 
     sentence_legend_html <- generate_legend_html(lower_limit,
-                                                 upper_limit,
-                                                 palette,
-                                                 title = "Sentence Legend")
+      upper_limit,
+      palette,
+      title = "Sentence Legend"
+    )
 
     return(
       div(
@@ -1037,21 +1076,18 @@ generate_histogram_html <- function(data) {
 }
 
 generateDocument <- function(
-  data,
-  embeddings,
-  targets,
-  modelName,
-  limits,
-  palette = NULL,
-  shapley = FALSE,
-  filePath = "output.html"
-) {
+    data,
+    targets,
+    limits,
+    palette = NULL,
+    shapley = FALSE,
+    filePath = "output.html") {
   # Get the color codes for each value
   data <- createColoredTibble(data, limits, palette, shapley)
 
   # Generate list of tokens htmls. One for each paragraph.
   tokens_htmls <-
-    generate_tokens_htmls(data$tokens, embeddings$tokens, modelName)
+    generate_tokens_htmls(data$tokens)
 
   # Generate list of sentences htmls. One for each paragraph.
   sentences_htmls <- mapply(function(sentences, tokens_html) {
@@ -1059,10 +1095,13 @@ generateDocument <- function(
   }, data$sentences, tokens_htmls, SIMPLIFY = FALSE)
 
   # Generate list of paragraph htmls.
-  paragraph_htmls <- mapply(function(paragraph, sentences_html, target) {
-    generate_paragraph_html(paragraph, sentences_html, target)
-  }, split(data$paragraph, seq_len(nrow(data$paragraph))),
-  sentences_htmls, split(targets, seq_len(nrow(targets))), SIMPLIFY = FALSE)
+  paragraph_htmls <- mapply(
+    function(paragraph, sentences_html, target) {
+      generate_paragraph_html(paragraph, sentences_html, target)
+    }, split(data$paragraph, seq_len(nrow(data$paragraph))),
+    sentences_htmls, split(targets, seq_len(nrow(targets))),
+    SIMPLIFY = FALSE
+  )
 
   # Generate the legend(s)
   shapley_legend_htmls <- NULL
@@ -1157,5 +1196,4 @@ generateDocument <- function(
   save_html(full_html, filePath)
 
   return(htmltools::browsable(full_html))
-
 }

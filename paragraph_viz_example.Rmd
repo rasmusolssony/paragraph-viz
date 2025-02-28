@@ -50,8 +50,8 @@ options(future.globals.maxSize = 1.0 * 1e10)
 # Select model, data and parameters
 ```{r data import, echo=TRUE}
 # supported models: bert, roberta base models, mxbai
-#nameLLM <- "bert-base-uncased"
-nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
+nameLLM <- "bert-base-uncased"
+#nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
 #nameLLM <- "Alibaba-NLP/gte-large-en-v1.5"
 # nameLLM <- "jxm/cde-small-v2"
 
@@ -156,7 +156,7 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-plot <- generateDocument(output, toPredEmbed, data[paragraphs_to_plot, scale_total], nameLLM, limits = c(0, 27), filePath = paste0(model_folder_path, "/plot_paragraphs_", paragraphs_to_plot[1], "-", paragraphs_to_plot[length(paragraphs_to_plot)], ".html"))
+plot <- generateDocument(output, data[paragraphs_to_plot, scale_total], limits = c(0, 27), filePath = paste0(model_folder_path, "/plot_paragraphs_", paragraphs_to_plot[1], "-", paragraphs_to_plot[length(paragraphs_to_plot)], ".html"))
 plot
 ```
 ```{r}
@@ -190,9 +190,12 @@ zeroEmbeddings <- tibble(
   tokens = "zero",  # First column
   !!!setNames(as.list(rep(0, 1024)), paste0("Dim", 1:1024))  # Generate 1024 columns with names Dim1 to Dim1024
 )
-beta <- predict(zeroEmbeddings, theModels[["paragraphModel"]], nameLLM)
+
+beta <- theModels$paragraphModel$final_model$fit$fit$fit$a0[[1]]
+beta_old <- predict(zeroEmbeddings, theModels[["paragraphModel"]], nameLLM)
+print(beta)
 #print(normalizedOutput)
-shapleyPredictions <- getShapleyPredictions(normalizedOutput, beta$predicted_value)
+shapleyPredictions <- getShapleyPredictions(normalizedOutput, beta)
 ```
 
 ```{r}
@@ -200,7 +203,7 @@ source(
   "paragraph_viz.R", # plotting functions
   encoding=localeToCharset()
 )
-plot <- generateDocument(shapleyPredictions, toPredEmbedShapley, data[paragraphs_to_plot, scale_total], nameLLM, limits = c(0, 27), shapley = TRUE, filePath = paste0(model_folder_path, "/plot_paragraphs_", paragraphs_to_plot[1], "-", paragraphs_to_plot[length(paragraphs_to_plot)], "-shapley",".html"))
+plot <- generateDocument(shapleyPredictions, data[paragraphs_to_plot, scale_total], limits = c(0, 27), shapley = TRUE, filePath = paste0(model_folder_path, "/plot_paragraphs_", paragraphs_to_plot[1], "-", paragraphs_to_plot[length(paragraphs_to_plot)], "-shapley",".html"))
 plot
 ```
 
@@ -211,4 +214,25 @@ print(data[paragraphs_to_plot,scale_total] %>% as.list())
 #print(length((data[paragraphs_to_plot,scale_total] %>% unname() %>% as.list())))
 plot(x = output$paragraphs$predicted_value, y = (data[paragraphs_to_plot,scale_total] %>% as.list())$PHQtot)
 abline(0,1)
+```
+
+```{r}
+source(
+  "text_annotation/text_highlight.R",
+  encoding=localeToCharset()
+)
+texts <- output
+generateShiny(texts)
+
+```
+
+```{r}
+
+source(
+  "paragraph_viz.R", # plotting functions
+  encoding=localeToCharset()
+)
+
+saveRDS(output, "texts.rds")
+
 ```

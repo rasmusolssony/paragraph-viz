@@ -1,0 +1,154 @@
+---
+title: "Paragraph_Viz_V2_Exjobb_pipeline"
+author: "Rasmus Olsson"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+options(warn=1)
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Import packages and functions
+```{r import the plotting functions, echo=TRUE}
+library(text)
+reticulate::source_python("fullStopCorrt.py")
+reticulate::source_python("utils.py")
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding = localeToCharset()
+)
+
+options(future.globals.maxSize = 1.0 * 1e10)
+
+```
+
+# Select model, data and parameters
+```{r data import, echo=TRUE}
+nameLLM <- "bert-base-uncased"
+#nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
+
+text_set <- "Deptext"
+scale_total <- "PHQtot" #for 1000 dataset
+
+data <- read_csv("dataset.csv")
+
+data <- data[, c(text_set, scale_total)]
+data <- drop_na(data)
+data_length <- nrow(data)
+
+# size of train and test sets
+test_size <- 50
+train_size <- data_length - test_size
+
+model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size, "-ridge") # nolint: line_length_linter.
+embeddings_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size)
+save_model <- TRUE
+save_embeddings <- TRUE
+force_train <- FALSE
+```
+
+# Create embeddings
+```{r train, echo=TRUE}
+if(!file.exists(paste0(embeddings_folder_path, "/embeddings.rds")) || force_train){
+
+  embed <- createEmbeddings(
+                      data[(test_size+1):data_length, text_set],
+                      model=nameLLM,
+                      device = "gpu", # cpu, gpu, mps
+                      dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
+                      embedSentences = FALSE, # Should be false for paragraph level training
+                      "both",
+                      trust_remote_code = TRUE,
+  )
+
+  if (save_embeddings) {
+    if(!dir.exists(file.path(embeddings_folder_path))){
+      dir.create(file.path(embeddings_folder_path))
+    }
+    saveRDS(embed, paste0(embeddings_folder_path, "/embeddings.rds"))
+  }
+} else {
+  embed <- readRDS(paste0(embeddings_folder_path, "/embeddings.rds"))
+}
+```
+
+# Train Model / Load Model
+```{r train, echo=TRUE}
+if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
+
+  theModels <- trainLanguageModel(embed, # embedding
+                        data[(test_size+1):data_length, scale_total], # scale values, target
+                        "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
+                        modelName = nameLLM,
+                        mixture = 1
+  )
+
+  if (save_model) {
+    if(!dir.exists(file.path(model_folder_path))){
+      dir.create(file.path(model_folder_path))
+    }
+    saveRDS(theModels, paste0(model_folder_path, "/models.rds"))
+  }
+
+} else {
+  theModels <- readRDS(paste0(model_folder_path, "/models.rds"))
+}
+```
+
+# Predict and plot
+```{r pred and plot, echo=TRUE}
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding=localeToCharset()
+)
+paragraphs_to_plot <- 1:50
+
+toPredEmbed <- createEmbeddings(data[paragraphs_to_plot,text_set],
+                         model=nameLLM,
+                         dim_name=FALSE,
+                         device="gpu",
+                         trust_remote_code = TRUE)
+
+```
+
+```{r}
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding=localeToCharset()
+)
+predictions <- predictLanguage(toPredEmbed, theModels$paragraphModel)
+
+```
+
+```{r}
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding=localeToCharset()
+)
+contributions <- getContributionScores(predictions, theModels$paragraphModel, nameLLM)
+
+print("Pearson correlation: ")
+print(pearsonCorrelation(predictions$paragraphs$predicted_value, data[paragraphs_to_plot,scale_total]))
+
+```
+```{r}
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding=localeToCharset()
+)
+plot <- generateDocument(contributions, data[paragraphs_to_plot, scale_total], limits = c(0, 27), shapley = TRUE, filePath = paste0(model_folder_path, "/plot_paragraphs_", paragraphs_to_plot[1], "-", paragraphs_to_plot[length(paragraphs_to_plot)], "-shapley",".html"))
+plot
+```
+
+```{r}
+#Only here so we can run above
+```
