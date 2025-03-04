@@ -65,8 +65,6 @@ if(!file.exists(paste0(embeddings_folder_path, "/embeddings.rds")) || force_trai
                       model=nameLLM,
                       device = "gpu", # cpu, gpu, mps
                       dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
-                      embedSentences = FALSE, # Should be false for paragraph level training
-                      "both",
                       trust_remote_code = TRUE,
   )
 

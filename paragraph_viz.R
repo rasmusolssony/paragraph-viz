@@ -979,7 +979,7 @@ generate_paragraph_html <- function(paragraph, sentences_html, target) {
         "padding: 10px;", # Padding for the paragraph
         "margin-bottom: 10px;" # Space between paragraphs
       ),
-      title = paste("Predicted value: ", paragraph$predicted_value), # Hover text
+      title = paste("Predicted value: ", paragraph$predicted_value),
       sentences_html,
       tags$h3(
         "Predicted score: ",

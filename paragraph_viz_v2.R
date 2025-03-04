@@ -64,21 +64,13 @@ createEmbeddings <- function(texts,
 #' @importFrom reticulate py_has_attr
 #' @return The transformed string.
 #' @noRd
-decodeToken <- function(aStringList, tokenizers, modelName) {
+decodeToken <- function(aStringList, modelName) {
+  tokenizers <- get_tokenizer(modelName)
+
   # Convert all tokens to ids
-  if (reticulate::py_has_attr(tokenizers, "convert_tokens_to_ids")) {
-    ids <- aStringList %>% tokenizers$convert_tokens_to_ids()
-  } else {
-    tokenizers <- getTokenizer(modelName)
-    ids <- aStringList %>% tokenizers$convert_tokens_to_ids()
-  }
-  # Convert all ids to words (combining subwords)
-  if (reticulate::py_has_attr(tokenizers, "decode")) {
-    output <- ids %>% tokenizers$decode()
-  } else {
-    tokenizers <- getTokenizer(modelName)
-    output <- ids %>% tokenizers$decode()
-  }
+  ids <- aStringList %>% tokenizers$convert_tokens_to_ids()
+  # Convert all ids to a string of tokens
+  output <- ids %>% tokenizers$decode()
   return(output)
 }
 
@@ -148,7 +140,7 @@ getSubWordIDs <- function(tokens, modelName) {
 #' @importFrom furrr future_pmap
 #' @return The tranformed tokens tibble without subword tokens.
 #' @noRd
-combineSubWords <- function(tokens, tokenizer, modelName) {
+combineSubWords <- function(tokens, modelName) {
   subwordIDs <- getSubWordIDs(tokens$tokens, modelName)
 
   if (is.null(subwordIDs)) {
@@ -160,7 +152,7 @@ combineSubWords <- function(tokens, tokenizer, modelName) {
     end <- subwordIDs$end_row[row]
     # Decode the subword tokens to words
     combined_word <-
-      decodeToken(tokens$tokens[start:end], tokenizer, modelName)
+      decodeToken(tokens$tokens[start:end], modelName)
     # Trim potential whitespaces
     combined_word <- trimws(combined_word)
     # Replace the inital subword with the combined word and set the rest to NA
@@ -308,29 +300,18 @@ tokensToWords <- function(tokenContributions, modelName) {
   start_token <- get_start_token(modelName)
   end_token <- get_end_token(modelName)
 
-  tokenizer <- getTokenizer(modelName)
-
   wordContributions <- tokenContributions %>%
-    purrr::map(~ {
-      # Filter out special tokens (CLS, SEP, etc.)
-      .x %>%
-        dplyr::filter(tokens != start_token) %>%
-        dplyr::filter(tokens != end_token) %>%
-        combineSubWords(tokenizer, modelName)
-    })
+    purrr::map(combineSubWords, modelName)
 
   return(wordContributions)
 }
 
-tokensToSentences <- function(tokenContributions, modelName) {
-  
-  tokenizer <- getTokenizer(modelName)
-
+wordsToSentences <- function(wordContributions, modelName) {
   # Process each token tibble to create a sentence-level tibble
-  sentenceContributions <- tokenContributions %>%
-    purrr::map(function(tokenEmbed) {
+  sentenceContributions <- wordContributions %>%
+    purrr::map(function(words) {
       # Get the rows corresponding to special tokens (CLS/SEP) for this tibble.
-      clsSepRows <- getCLSSEPTokenRows(tokenEmbed, modelName)
+      clsSepRows <- getCLSSEPTokenRows(words, modelName)
       # Split the rows so each is processed individually.
       clsSepRows_split <- split(clsSepRows, seq(nrow(clsSepRows)))
 
@@ -339,16 +320,16 @@ tokensToSentences <- function(tokenContributions, modelName) {
       sentenceTibble <- clsSepRows_split %>%
         purrr::map_dfr(function(row_info) {
           # Get the start and end indices based on your parameters.
-          rows <- getStartAndEndRow(FALSE, row_info$CLS, row_info$SEP)
+          rows <- getStartAndEndRow("both", row_info$CLS, row_info$SEP)
           startRow <- rows[[1]]
           endRow <- rows[[2]]
 
           # Decode the tokens between the
           # start and end indices to form a sentence.
-          sentence <- decodeToken(tokenEmbed$tokens[startRow:endRow],
-                                  tokenizer, modelName) %>% trimws()
+          sentence <- decodeToken(words$tokens[startRow:endRow],
+                                  modelName) %>% trimws()
           # Sum predicted values for these tokens.
-          predicted_value <- sum(tokenEmbed$predicted_value[startRow:endRow])
+          predicted_value <- sum(words$predicted_value[startRow:endRow])
 
           tibble(
             sentence = sentence,
@@ -365,21 +346,32 @@ tokensToSentences <- function(tokenContributions, modelName) {
   return(sentenceContributions)
 }
 
-getContributionScores <- function(predictions, model, modelName) {
+getContributionScores <- function(
+  predictions,
+  model,
+  modelName,
+  referenceValue = NULL
+) {
+
   # Get beta0 from the model to calculate contribution score.
-  beta_0 <- model$final_model$fit$fit$fit$a0[[1]]
+  if (is.null(referenceValue)) {
+    referenceValue <- model$final_model$fit$fit$fit$a0[[1]]
+  }
 
   tokenContributions <- predictions$tokens %>%
     purrr::map(~ {
       .x %>%
-        mutate(across(-1, ~ . - beta_0)) %>%
+        mutate(across(-1, ~ . - referenceValue)) %>%
         mutate(across(-1, ~ . / n()))
     })
 
+  wordContributions <- tokensToWords(tokenContributions, modelName)
+  sentenceContributions <- wordsToSentences(wordContributions, modelName)
+
   contributions <- tibble(
     tokens = tokenContributions,
-    words = tokensToWords(tokenContributions, modelName),
-    sentences = tokensToSentences(tokenContributions, modelName),
+    words = wordContributions,
+    sentences = sentenceContributions,
     paragraphs = predictions$paragraphs
   )
 
@@ -389,15 +381,20 @@ getContributionScores <- function(predictions, model, modelName) {
 #### Color functions ####
 
 # Define the color gradient
-generate_gradient <- function(values, lower_limit, upper_limit, palette = NULL) {
+generate_gradient <- function(
+  values,
+  lower_limit,
+  upper_limit,
+  palette = NULL
+) {
   # Default to a red-yellow-blue color palette
   if (is.null(palette)) {
     palette <- "Temps"
   }
   # Ensure limits are numeric
   if (!is.numeric(values) ||
-    !is.numeric(lower_limit) ||
-    !is.numeric(upper_limit)) {
+        !is.numeric(lower_limit) ||
+        !is.numeric(upper_limit)) {
     stop("Values and limits must be numeric.")
   }
 
@@ -490,12 +487,16 @@ generate_words_htmls <- function(tokens) {
 }
 
 # Generate HTML for sentences
-generate_sentences_html <- function(sentences, words_html) {
+generate_sentences_html <- function(sentences, words_html, includeCLSSEP) {
   sentences <- split(sentences, seq(nrow(sentences)))
   sentence_html <- lapply(sentences, function(sentence) {
-    print(sentence$start_idx)
-    print(sentence$end_idx)
-    print(length(words_html))
+    if (!includeCLSSEP) {
+      start_idx <- sentence$start_idx + 1
+      end_idx <- sentence$end_idx - 1
+    } else {
+      start_idx <- sentence$start_idx
+      end_idx <- sentence$end_idx
+    }
     div(
       style = paste0(
         "background-color:", sentence$colorCodes, ";",
@@ -503,7 +504,7 @@ generate_sentences_html <- function(sentences, words_html) {
         "margin-bottom: 5px;" # Space between sentences
       ),
       title = paste("Predicted value:", sentence$predicted_value), # Hover text
-      words_html[sentence$start_idx:sentence$end_idx]
+      words_html[start_idx:end_idx]
     )
   })
   do.call(tagList, sentence_html)
@@ -518,7 +519,7 @@ generate_paragraph_html <- function(paragraph, sentences_html, target) {
         "padding: 10px;", # Padding for the paragraph
         "margin-bottom: 10px;" # Space between paragraphs
       ),
-      title = paste("Predicted value: ", paragraph$predicted_value), # Hover text
+      title = paste("Predicted value: ", paragraph$predicted_value),
       sentences_html,
       tags$h3(
         "Predicted score: ",
@@ -620,6 +621,7 @@ generateDocument <- function(
     limits,
     palette = NULL,
     shapley = FALSE,
+    includeCLSSEP = FALSE,
     filePath = "output.html") {
   # Get the color codes for each value
   data <- createColoredTibble(data, limits, palette, shapley)
@@ -629,10 +631,10 @@ generateDocument <- function(
     generate_words_htmls(data$words)
 
   # Generate list of sentences htmls. One for each paragraph.
-  sentences_htmls <- mapply(function(sentences, words_html) {
-    generate_sentences_html(sentences, words_html)
-
-  }, data$sentences, words_htmls, SIMPLIFY = FALSE)
+  sentences_htmls <- mapply(
+    generate_sentences_html,
+    data$sentences, words_htmls, includeCLSSEP, SIMPLIFY = FALSE
+  )
 
   # Generate list of paragraph htmls.
   paragraph_htmls <- mapply(
