@@ -53,3 +53,6 @@ rsconnect/
 
 # Skip models
 models/
+
+# Skip quarto file
+quarto-linux-amd64.deb
