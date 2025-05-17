@@ -1,0 +1,181 @@
+---
+title: "Paragraph_Viz_V2_Exjobb_pipeline"
+author: "Rasmus Olsson"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+options(warn = 1)
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Import packages and functions
+```{r import the plotting functions, echo=TRUE}
+library(text)
+reticulate::source_python("fullStopCorrt.py")
+reticulate::source_python("utils.py")
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding = localeToCharset()
+)
+
+options(future.globals.maxSize = 1.0 * 1e10)
+
+```
+
+# Select model, data and parameters
+```{r data import, echo=TRUE}
+name_llms <- list(
+  "bert" = "bert-base-uncased",
+  "mxbai" = "mixedbread-ai/mxbai-embed-large-v1",
+  "roberta" = "roberta-large"
+)
+
+text_set <- "Deptext"
+scale_total <- "PHQtot" #for 1000 dataset
+
+data <- read_csv("dataset.csv")
+
+data <- data[, c(text_set, scale_total)]
+data <- drop_na(data)
+data_length <- nrow(data)
+data[[text_set]] <- gsub("\\.(?![\\.\\s])", ". ", data[[text_set]], perl = TRUE)
+# size of train and test sets
+test_size <- 50
+train_size <- data_length - test_size
+
+folder_path <- paste0("models/final")
+```
+
+# Save to file
+```{r save, echo=TRUE}
+save <- function(values, dir, file_name) {
+  if (!dir.exists(file.path(dir))) {
+    dir.create(file.path(dir))
+  }
+  saveRDS(values, paste0(dir, "/", file_name))
+}
+
+```
+
+
+# Create embeddings
+```{r create train embeddings, echo=TRUE}
+
+for (name_llm in name_llms) {
+  path <- paste0(folder_path, "/", name_llm)
+  if (!file.exists(paste0(path, "/embeddings.rds"))) {
+
+    embed <- createEmbeddings(
+      data[(test_size + 1):data_length, text_set],
+      model = name_llm,
+      device = "gpu", # cpu, gpu, mps
+      dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
+      trust_remote_code = TRUE,
+    )
+
+    save(embed, path, "embeddings.rds")
+
+  } else {
+    embed <- readRDS(paste0(path, "/embeddings.rds"))
+  }
+
+  if (!file.exists(paste0(path, "/model.rds"))) {
+    model <- textTrainRegression(
+      x = embed$paragraphs,
+      y = data[(test_size + 1):data_length, scale_total]
+    )
+    save(model, path, "/model.rds")
+  } else {
+    model <- readRDS(paste0(path, "/model.rds"))
+  }
+
+  if (!file.exists(paste0(path, "/test_embeddings.rds"))) {
+    test_embed <- createEmbeddings(
+      data[1:test_size, text_set],
+      model = name_llm,
+      dim_name = FALSE,
+      device = "gpu",
+      trust_remote_code = TRUE
+    )
+    save(test_embed, path, "test_embeddings.rds")
+
+  } else {
+    test_embed <- readRDS(paste0(path, "/test_embeddings.rds"))
+  }
+
+  if (!file.exists(paste0(path, "/predictions.rds"))) {
+    predictions <- predictLanguage(test_embed, model)
+
+    save(predictions, path, "predictions.rds")
+  } else {
+    predictions <- readRDS(paste0(path, "/predictions.rds"))
+  }
+
+  reference_value <- model$final_model$fit$fit$fit$a0[[1]]
+  contributions_file <- paste0("/contributions-ref_", reference_value, ".rds")
+
+  if (!file.exists(paste0(path, contributions_file))) {
+
+    contributions <- getContributionScores(
+      predictions,
+      model,
+      name_llm,
+      reference_value,
+      globalNormalization = FALSE
+    )
+
+    save(contributions, path, contributions_file)
+
+  } else {
+    contributions <- readRDS(paste0(path, contributions_file))
+  }
+
+  global_contributions_file <-
+    paste0("/global_contributions-ref_", reference_value, ".rds")
+
+  if (!file.exists(paste0(path, global_contributions_file))) {
+
+    global_contributions <- getContributionScores(
+      predictions,
+      model,
+      name_llm,
+      reference_value,
+      globalNormalization = TRUE
+    )
+    save(global_contributions, path, global_contributions_file)
+
+  } else {
+    global_contributions <- readRDS(paste0(path, global_contributions_file))
+  }
+
+  if (name_llm == "roberta-large") {
+    contributions$words <- map(contributions$words, function(words) {
+      words %>% mutate(
+        words = ifelse(substr(words, 1, 1) == "Ġ", substring(words, 2), words)
+      )
+    })
+  }
+  plot <- generateDocument(
+    contributions,
+    data[1:test_size, scale_total],
+    name_llm,
+    limits = c(0, 27),
+    shapley = TRUE,
+    filePath = paste0(path, "/plot_paragraphs_1-50.html")
+  )
+  plot
+}
+```
+
+```{r}
+
+```

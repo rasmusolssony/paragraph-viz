@@ -1,0 +1,106 @@
+---
+title: "Paragraph_Viz_V2_Exjobb_pipeline"
+author: "Rasmus Olsson"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+options(warn = 1)
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Import packages and functions
+```{r import the plotting functions, echo=TRUE}
+library(text)
+reticulate::source_python("fullStopCorrt.py")
+reticulate::source_python("utils.py")
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding = localeToCharset()
+)
+
+options(future.globals.maxSize = 1.0 * 1e10)
+
+```
+
+# Select model, data and parameters
+```{r data import, echo=TRUE}
+name_llms <- list(
+  "bert" = "bert-base-uncased",
+  "mxbai" = "mixedbread-ai/mxbai-embed-large-v1",
+  "roberta" = "roberta-large"
+)
+
+text_set <- "Deptext"
+scale_total <- "PHQtot" #for 1000 dataset
+
+data <- read_csv("dataset.csv")
+
+data <- data[, c(text_set, scale_total)]
+data <- drop_na(data)
+data_length <- nrow(data)
+data[[text_set]] <- gsub("\\.(?![\\.\\s])", ". ", data[[text_set]], perl = TRUE)
+# size of train and test sets
+test_size <- 50
+train_size <- data_length - test_size
+name_llm <- "bert-base-uncased"
+```
+
+
+
+# Create embeddings
+```{r create train embeddings, echo=TRUE}
+path <- paste0(folder_path, "/", name_llm)
+embed <- readRDS(paste0(path, "/embeddings.rds"))
+
+model <- readRDS(paste0(path, "/model.rds"))
+```
+
+```{r}
+    test_embed <- createEmbeddings(
+      data[26:28, text_set],
+      model = name_llm,
+      dim_name = FALSE,
+      device = "gpu",
+      trust_remote_code = TRUE
+    )
+
+    predictions <- predictLanguage(test_embed, model)
+
+  reference_value <- model$final_model$fit$fit$fit$a0[[1]]
+```
+```{r}
+    contributions <- getContributionScores(
+      predictions,
+      model,
+      name_llm,
+      reference_value,
+      globalNormalization = FALSE
+    )
+
+  if (name_llm == "roberta-large") {
+    contributions$words <- map(contributions$words, function(words) {
+      words %>% mutate(
+        words = ifelse(substr(words, 1, 1) == "Ġ", substring(words, 2), words)
+      )
+    })
+  }
+  plot <- generateDocument(
+    contributions,
+    data[26:28, scale_total],
+    name_llm,
+    limits = c(0, 27),
+    shapley = TRUE,
+    filePath = paste0("test_plot.html")
+  )
+  plot
+
+```

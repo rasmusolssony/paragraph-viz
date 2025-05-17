@@ -6,13 +6,13 @@ library(shinyjs)
 
 texts <- readRDS("texts.rds")
 
-texts$tokens <- lapply(texts$tokens, function(x) {
+texts$words <- lapply(texts$words, function(x) {
   x[, "annotation"] <- 0
   x %>% as_tibble()
 })
 texts$sentences <- lapply(texts$sentences, function(x) {
   x[, "ranking"] <- 0
-  x
+  x %>% as_tibble()
 })
 texts$paragraphs[, "rating"] <- 14
 
@@ -106,7 +106,7 @@ ui <- fluidPage(
         if (savedAnnotations) {
           console.log('Restored annotations:', JSON.parse(savedAnnotations));
           Shiny.setInputValue(
-            'restored_annotations', 
+           'restored_annotations', 
             JSON.parse(savedAnnotations), 
             {priority: 'event'}
           );
@@ -119,41 +119,47 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   text_index <- reactiveVal(1)
   annotations <- reactiveValues(data = texts)
-  # observeEvent(text_index(), {
-  #   if (text_index() == 1) {
-  #     shinyjs::disable("prev_text")
-  #   } else {
-  #     shinyjs::enable("prev_text")
-  #   }
-  #   if (text_index() == length(texts$tokens)) {
-  #     shinyjs::disable("next_text")
-  #   } else {
-  #     shinyjs::enable("next_text")
-  #   }
-  # })
+  observeEvent(text_index(), {
+    if (text_index() == 1) {
+      shinyjs::disable("prev_text")
+    } else {
+      shinyjs::enable("prev_text")
+    }
+    if (text_index() == length(texts$words)) {
+      shinyjs::disable("next_text")
+    } else {
+      shinyjs::enable("next_text")
+    }
+  })
   output$text_display <- renderUI({
-    words_by_sentence <-
-      group_by(annotations$data$tokens[[text_index()]], sentence_idx) %>%
-      group_split()
+    sentences <- annotations$data$sentences[[text_index()]]
+    words <- annotations$data$words[[text_index()]]
     rankings <-
       annotations$data$sentences[[text_index()]]$ranking
     value <-
       annotations$data$paragraphs$rating[[text_index()]]
     word_index <- 0
-    sentences <- lapply(seq_along(words_by_sentence), function(i) {
-      words <- words_by_sentence[[i]]$tokens
-      word_annotations <- words_by_sentence[[i]]$annotation
+    sentences_html <- lapply(seq_len(nrow(sentences)), function(i) {
+      start_idx <- sentences[i, "start_idx"][[1]]
+      end_idx <- sentences[i, "end_idx"][[1]]
+      sentence_words <- words$words[start_idx:end_idx]
+      word_annotations <- words$annotation[start_idx:end_idx]
       tags$div(
         style = "display: flex; margin: 10px; justify-content: space-between;",
         tags$div(
           style = "flex: left;",
-          lapply(seq_along(words), function(j) {
+          lapply(seq_along(sentence_words), function(j) {
             word_index <<- word_index + 1
+            if (j == 1 || j == length(sentence_words)) {
+              word <- ""
+            } else{
+              word <- sentence_words[j]
+            }
             color <-
               if (word_annotations[j] == 1) "red"
               else if (word_annotations[j] == -1) "green"
               else "black"
-            tags$span(words[j], " ", id = word_index,
+            tags$span(word, " ", id = word_index,
               class = "word", `data-annotation` = word_annotations[j],
               style = glue("cursor: pointer; font-size: 20px; 
                         user-select: none; color: {color};")
@@ -162,7 +168,7 @@ server <- function(input, output, session) {
         ),
         tags$div(
           style = "flex: right; max-width: 120px;",
-          selectInput(paste0("sentence_", i), paste("Rank Sentence:"),
+          selectInput(paste0("sentence_", i), paste("Rate Sentence:"),
             choices = 10:-10,
             selected = rankings[i]
           )
@@ -172,9 +178,9 @@ server <- function(input, output, session) {
     tags$div(
       tags$h3(
         style = "margin-bottom: 20px;",
-        paste0("Paragraph ", text_index(), " / ", length(texts$tokens))
+        paste0("Paragraph ", text_index(), " / ", length(texts$words))
       ),
-      sentences,
+      sentences_html,
       tags$div(
         style = "max-width: 120px;",
         numericInput(
@@ -190,67 +196,55 @@ server <- function(input, output, session) {
 
   output$instructions <- renderUI({
     tags$div(
-  tags$h1("Text Highlighting tool - Instructions"),
-  
-  tags$h2("Purpose"),
-  tags$p("In order to evaluate how well different models “highlights” words and sentences, we need a dataset to compare against. This dataset will consist of words that are highlighted based on their contribution to the passage rating, so words or sequence of words that contribute to a higher score i.e. depression will be highlighted red and words that contribute to a lower score i.e. healthy will be highlighted green. The entire passage will also be rated, and each sentence will be ranked based on contribution towards depression. With this dataset we can then compare how the model has highlighted words and sentences, and how it has rated the passage to how experts would, providing us with a good metric to evaluate different models."),
-  
-  tags$h2("Instructions"),
-  tags$ul(
-    tags$li(
-      tags$p(
-        tags$strong("Read the passage:"),
-        " Before marking or rating, start by reading the full paragraph from start to finish."
-      )
-    ),
-    tags$li(
-      tags$p(
-        tags$strong("Rate the passage:"),
-        " Try, to the best of your ability, to estimate the rating scale score (PHQ-9 : from 0-27) of the participant, based on the text response you just read."
-      )
-    ),
-    tags$li(
-      tags$p(
-        tags$strong("Marking words:"),
-        " If you think a word or sequence of words, accounting for the context in which they are used, is contributing to depression or good mental health, you can click on each word to mark them. If you click it once it will become red, marking it as depressive; if you click it twice it will become green, marking it as healthy; and if you click it again it will go back to being neutral. \n
-        Please highlight words/sequences accordingly: ",
-        tags$ul(
-          tags$li(
-            "Red if indicating depression"
-          ),
-          tags$li(
-            "Green if indicating good mental health."
-          ),
-          tags$li(
-            "Unmarked if neutral (indicating neither depression nor good mental health)."
+      tags$h2("Instructions"),
+      tags$ul(
+        tags$li(
+          tags$p(
+            tags$strong("Read the passage:"),
+            "Start by reading the full paragraph from start to finish before marking or rating."
+          )
+        ),
+        tags$li(
+          tags$p(
+            tags$strong("Rate the entire passage:"),
+            "Try, to the best of your ability, to estimate the rating scale score (PHQ-9 : from 0-27) of the participant, based on the text response you just read."
+          )
+        ),
+        tags$li(
+          tags$p(
+            tags$strong("Mark individual words:"),
+            "If you think a word or sequence of words, accounting for the context in which they are used, is contributing to depression or good mental health (“flourishing”), you can click on each word to mark them. If you click it once it will become red, marking it as depressive, if you click it twice it will become green marking it as healthy and if you click it again it will go back to being neutral. \n
+            Please highlight words / sequences accordingly",
+            tags$ul(
+              tags$li(
+                "Red if indicating depression"
+              ),
+              tags$li(
+                "Green if indicating good mental health."
+              ),
+              tags$li(
+                "Unmarked if neutral (indicating neither depression nor good mental health)."
+              )
+            )
+          )
+        ),
+        tags$li(
+          tags$p(
+            tags$strong("Rate sentences:"),
+            "Next to each sentence is a dropdown menu. Use this menu to rate the sentences in order of how much they contribute to a higher or lower depression score. The scale here is 10 to -10 where 10 means that the sentence indicates that the participant is extremely severely depressed, 0 means it’s neutral or that it doesn’t give any information and -10 means that the sentence indicates that the participant is incredibly flourishing."
           )
         )
-      )
-    ),
-    tags$li(
+      ),
       tags$p(
-        tags$strong("Ranking sentences:"), 
-        " Next to each sentence is a dropdown menu. Use this menu to rank the sentences in order of how much they contribute to a higher or lower depression score. The scale here is 10 to -10 where 10 means it’s an extremely depressive sentence, 0 means it’s neutral or that it doesn’t give any information, and -10 means that the sentence indicates very good mental health."
-      )
-    ),
-    tags$li(
-      tags$p(
-        tags$strong("Technical details:"), 
+        tags$strong("Technical details:"),
         " There is a counter on the top of the page that tells you how many paragraphs you have highlighted. Whenever you click 'Next Text', 'Previous Text' or 'Save Annotations' your selections will be saved locally on your browser. This means if you ever close or update the webpage, your progress will be saved for all paragraphs except the one you are currently working on. When you are done, press the 'Save annotations' button, save the file as 'Annotations-<YourName>.rds' and let us know that you are done."
+      ),
+      tags$p("If you have any questions, don’t hesitate to reach out."),
+      tags$p(
+        tags$strong("Thank you so much for helping out!")
       )
-    ),
-  ),
-    tags$p("If you have any questions, don’t hesitate to reach out."),
-    tags$p(
-      tags$strong("Thank you so much for helping out!")
-    ),
-  
-  tags$h2("Question and instructions given to the participants:"),
-  tags$p("Over the last 2 weeks, have you been depressed or not? Please answer the question by typing at least a paragraph below that indicates whether you have been depressed or not. Try to weigh the strength and the number of aspects that describe if you have been depressed or not so that they reflect your overall personal state of depression. For example, if you have been depressed, then write more about aspects describing this, and if you have not been depressed, then write more about aspects describing that."),
-  tags$p("Write about those aspects that are most important and meaningful to you."),
-  tags$p("Write at least one paragraph in the box.")
-)
-})
+    )
+  })
 
   output$rank_info <- renderUI({
     tags$div(
@@ -266,7 +260,7 @@ server <- function(input, output, session) {
         "Healthy"
       ),
       tags$h3(
-        "Sentence Ranking Legend"
+        "Sentence Rating Legend"
       ),
       tags$p(
         tags$strong("10: "),
@@ -328,10 +322,22 @@ server <- function(input, output, session) {
   observeEvent(input$restored_annotations, {
     req(input$restored_annotations)
     annotations$data <- input$restored_annotations
-    annotations$data$tokens <- lapply(input$restored_annotations$tokens,
-                                      as_tibble)
+    annotations$data$words <- lapply(input$restored_annotations$words,
+      function(df) {
+        as_tibble(df) %>% mutate(across(everything(), ~ unlist(.)))
+      }
+    )
+    annotations$data$sentences <- lapply(input$restored_annotations$sentences,
+      function(df) {
+        as_tibble(df) %>% mutate(across(everything(), ~ unlist(.)))
+      }
+    )
+
+    annotations$data$paragraphs <-
+      as_tibble(input$restored_annotations$paragraphs) %>%
+      mutate(across(everything(), ~ unlist(.)))
     if (!is.null(annotations$data$text_index)) {
-      text_index(annotations$data$text_index)
+      text_index(annotations$data$text_index[[1]])
     }
   })
 
@@ -359,7 +365,7 @@ server <- function(input, output, session) {
 
   update_annotations <- function() {
     req(input$word_annotations)
-    annotations$data$tokens[[text_index()]]$annotation <-
+    annotations$data$words[[text_index()]]$annotation <-
       input$word_annotations
 
     annotations$data$paragraphs$rating[[text_index()]] <-

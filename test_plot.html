@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<style>body{background-color:white;}</style>
+
+  <title>Text Visualization</title>
+</head>
+<html>
+  <body>
+    <h1>Text Prediction Visualization</h1>
+    <h2>bert-base-uncased</h2>
+    <select id="paragraphSelector" style="margin-bottom: 10px;" onchange="showSelectedParagraph()">
+      <option value="1">Paragraph 1</option>
+      <option value="2">Paragraph 2</option>
+      <option value="3">Paragraph 3</option>
+    </select>
+    <div id="paragraph1" style="display: block;">
+      <div style="background-color:#27AC8F;padding: 10px;margin-bottom: 10px;" title="Predicted value:  3.25699518230765">
+        <div style="background-color:#32B08D;padding: 5px;margin-bottom: 5px;" title="Predicted value: -3.28510675840831">
+          <span style="background-color:#3DB48B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.73339881911467">no</span>
+          <span style="background-color:#C9D98E;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.178708034268846">,</span>
+          <span style="background-color:#EAC980;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.199093330302812">i</span>
+          <span style="background-color:#BBD589;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.243774118311634">haven</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0497192376688186">'</span>
+          <span style="background-color:#8CCA82;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.434984163778288">t</span>
+          <span style="background-color:#A7D085;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.33264870776833">been</span>
+          <span style="background-color:#BBD589;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.227095204131147">depressed</span>
+          <span style="background-color:#BFD68B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.219544372382198">over</span>
+          <span style="background-color:#EAC980;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.204031370237495">the</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0532988524423624">last</span>
+          <span style="background-color:#B6D488;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.251951020417352">few</span>
+          <span style="background-color:#8CCA82;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.428052437908812">couple</span>
+          <span style="background-color:#5DBE85;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.606203122179888">of</span>
+          <span style="background-color:#BFD68B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.205656203630711">weeks</span>
+          <span style="background-color:#DFDF97;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0594037318186888">.</span>
+        </div>
+        <div style="background-color:#EADB94;padding: 5px;margin-bottom: 5px;" title="Predicted value: 0.149928355554052">
+          <span style="background-color:#EABE77;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.281104406309874">i</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0347119815031466">am</span>
+          <span style="background-color:#EAE19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.00359195297247987">generally</span>
+          <span style="background-color:#EAE19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.00149654164911891">a</span>
+          <span style="background-color:#EAD48B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.107612446929367">'</span>
+          <span style="background-color:#EABB75;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.302999787799075">glass</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0456988486825144">half</span>
+          <span style="background-color:#B1D287;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.273293690966547">full</span>
+          <span style="background-color:#EACC83;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.177273932440938">'</span>
+          <span style="background-color:#63C084;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.57690084246356">personality</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0448318470533933">.</span>
+        </div>
+        <div style="background-color:#C4D78C;padding: 5px;margin-bottom: 5px;" title="Predicted value: -0.840861214801413">
+          <span style="background-color:#E8E19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0229384377397284">i</span>
+          <span style="background-color:#BBD589;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.229242818004795">can</span>
+          <span style="background-color:#EAD188;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.124429492056001">get</span>
+          <span style="background-color:#CDDA8F;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.158686482049072">bogged</span>
+          <span style="background-color:#EACC83;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.176232832437651">down</span>
+          <span style="background-color:#EAB672;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.341618672358874">with</span>
+          <span style="background-color:#C9D98E;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.182152800702149">little</span>
+          <span style="background-color:#EAD48B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.118388830621546">things</span>
+          <span style="background-color:#D2DB91;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.120902759719538">from</span>
+          <span style="background-color:#D25B7D;padding: 0 2px;margin: 0 1px;" title="Predicted value: 1.03060911811818">time</span>
+          <span style="background-color:#C4D78C;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.197322377609186">to</span>
+          <span style="background-color:#CF597E;padding: 0 2px;margin: 0 1px;" title="Predicted value: 1.06879651402327">time</span>
+          <span style="background-color:#C9D98E;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.18239642537672">but</span>
+          <span style="background-color:#DBDE95;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0857369906724112">have</span>
+          <span style="background-color:#7BC682;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.489978253062108">happily</span>
+          <span style="background-color:#68C183;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.556243175077053">never</span>
+          <span style="background-color:#BBD589;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.246818435181911">suffered</span>
+          <span style="background-color:#87C882;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.45136431270257">with</span>
+          <span style="background-color:#42B58A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.710697386772016">depression</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0520021775743929">.</span>
+        </div>
+        <div style="background-color:#089392;padding: 5px;margin-bottom: 5px;" title="Predicted value: -4.54069588436341">
+          <span style="background-color:#EACE86;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.158656361386199">by</span>
+          <span style="background-color:#DFDF97;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0575108342614482">nature</span>
+          <span style="background-color:#EAC980;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.20323720649665">i</span>
+          <span style="background-color:#DFDF97;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0557975167357746">am</span>
+          <span style="background-color:#48B78A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.697242110927833">optimistic</span>
+          <span style="background-color:#DBDE95;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0777139818382999">,</span>
+          <span style="background-color:#58BC86;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.636871644400464">a</span>
+          <span style="background-color:#B1D287;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.274136767045974">problem</span>
+          <span style="background-color:#EADE97;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0177138969532828">solver</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0443090954513891">,</span>
+          <span style="background-color:#32B08D;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.782317564694905">and</span>
+          <span style="background-color:#EAD68E;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0905386018417123">i</span>
+          <span style="background-color:#EADE97;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.029874277698653">try</span>
+          <span style="background-color:#B1D287;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.271199520851692">to</span>
+          <span style="background-color:#B6D488;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.260149536950734">be</span>
+          <span style="background-color:#74C482;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.517710292723868">sensitive</span>
+          <span style="background-color:#C4D78C;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.196411974672079">to</span>
+          <span style="background-color:#EADE97;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0273887689853997">my</span>
+          <span style="background-color:#8CCA82;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.429413138175976">own</span>
+          <span style="background-color:#EAD188;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.13171022140878">mental</span>
+          <span style="background-color:#B1D287;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.285515403013506">health</span>
+          <span style="background-color:#BBD589;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.243479295251638">and</span>
+          <span style="background-color:#B1D287;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.286880040370588">emotions</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.051352278801946">.</span>
+        </div>
+        <h3>
+          Predicted score: 
+          3.25
+          , True score: 
+          1
+          , Reference score: 
+          11.77
+        </h3>
+      </div>
+    </div>
+    <div id="paragraph2" style="display: none;">
+      <div style="background-color:#BBD589;padding: 10px;margin-bottom: 10px;" title="Predicted value:  10.5810158702441">
+        <div style="background-color:#E06B72;padding: 5px;margin-bottom: 5px;" title="Predicted value: 1.37255546411364">
+          <span style="background-color:#E78E69;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.270615495066768">i</span>
+          <span style="background-color:#D6DC93;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0424540231282853">dont</span>
+          <span style="background-color:#9DCD84;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.153563086113756">feel</span>
+          <span style="background-color:#E16F71;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.353995418811056">i</span>
+          <span style="background-color:#EAE19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.00332006077131418">have</span>
+          <span style="background-color:#D2DB91;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0508289101714386">been</span>
+          <span style="background-color:#68C183;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.23034498661413">depressed</span>
+          <span style="background-color:#EAD991;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.023558618248121">as</span>
+          <span style="background-color:#EAB06F;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.157171480116455">such</span>
+          <span style="background-color:#DFDF97;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0284391706999541">,</span>
+          <span style="background-color:#089392;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.441365514677729">but</span>
+          <span style="background-color:#D86279;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.402897111895299">i</span>
+          <span style="background-color:#EACC83;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0701075061691849">have</span>
+          <span style="background-color:#E8E19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.00543584696224084">been</span>
+          <span style="background-color:#32B08D;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.317013097970106">sad</span>
+          <span style="background-color:#4DB989;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.272274279305026">that</span>
+          <span style="background-color:#E3756F;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.341692492769925">i</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0176179344532568">have</span>
+          <span style="background-color:#EACC83;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0752708632855188">missed</span>
+          <span style="background-color:#E3786E;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.331232296532653">out</span>
+          <span style="background-color:#92CB83;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.17281528158624">on</span>
+          <span style="background-color:#E9AE6D;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.171024396990025">a</span>
+          <span style="background-color:#D45E7C;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.419713862132592">lot</span>
+          <span style="background-color:#EAB672;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.14672138303237">of</span>
+          <span style="background-color:#E89C69;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.219218026778601">things</span>
+          <span style="background-color:#DBDE95;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0326234610338565">.</span>
+        </div>
+        <div style="background-color:#06A092;padding: 5px;margin-bottom: 5px;" title="Predicted value: -1.49903841022305">
+          <span style="background-color:#E06B72;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.364293442709155">i</span>
+          <span style="background-color:#EAC67E;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0866805729622071">have</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0191658747270803">a</span>
+          <span style="background-color:#B1D287;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.113260155371312">newborn</span>
+          <span style="background-color:#C9D98E;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0730816848880568">who</span>
+          <span style="background-color:#DE6974;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.374010496337031">was</span>
+          <span style="background-color:#B6D488;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.10268372700649">born</span>
+          <span style="background-color:#ACD186;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.124262086390139">in</span>
+          <span style="background-color:#EAC47C;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0997447408699628">the</span>
+          <span style="background-color:#B6D488;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.10805857460852">middle</span>
+          <span style="background-color:#EABE77;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.1146912090342">of</span>
+          <span style="background-color:#53BB87;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.263656931333603">lock</span>
+          <span style="background-color:#E6856A;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.297322513690101">down</span>
+          <span style="background-color:#81C782;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.195883435641994">and</span>
+          <span style="background-color:#E89969;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.231911637801384">we</span>
+          <span style="background-color:#B6D488;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.106944182018529">have</span>
+          <span style="background-color:#EAE19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0024026596597685">missed</span>
+          <span style="background-color:#EAB672;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.143866687579353">out</span>
+          <span style="background-color:#48B78A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.285448478826461">on</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0152153014189983">a</span>
+          <span style="background-color:#E9A26A;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.203536541128315">lot</span>
+          <span style="background-color:#E8E19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.00634839427788616">of</span>
+          <span style="background-color:#EAC67E;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0881901925704562">things</span>
+          <span style="background-color:#A7D085;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.130741093078284">to</span>
+          <span style="background-color:#81C782;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.196085195097609">do</span>
+          <span style="background-color:#6EC382;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.220996417005355">with</span>
+          <span style="background-color:#22AA8F;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.351429025610688">her</span>
+          <span style="background-color:#6EC382;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.225633102407529">,</span>
+          <span style="background-color:#EAB06F;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.164556264055747">family</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0157542052693454">meetings</span>
+          <span style="background-color:#EAC980;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0784910490941424">,</span>
+          <span style="background-color:#87C882;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.183712424722482">visits</span>
+          <span style="background-color:#EAD991;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0239340856290292">from</span>
+          <span style="background-color:#E9AE6D;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.169359324453644">friends</span>
+          <span style="background-color:#92CB83;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.172654362213913">and</span>
+          <span style="background-color:#42B58A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.295613555386884">now</span>
+          <span style="background-color:#029792;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.430071784674114">baby</span>
+          <span style="background-color:#EADE97;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.00455999492249922">classes</span>
+          <span style="background-color:#92CB83;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.165891618070338">which</span>
+          <span style="background-color:#EACC83;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0672041431771242">is</span>
+          <span style="background-color:#E3E099;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0199153339814314">where</span>
+          <span style="background-color:#D6DC93;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0465307151100643">mum</span>
+          <span style="background-color:#6EC382;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.225350150777281">friendships</span>
+          <span style="background-color:#EAD48B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0418481930930431">are</span>
+          <span style="background-color:#C4D78C;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.080039744930023">made</span>
+          <span style="background-color:#DFDF97;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0273120289045731">.</span>
+        </div>
+        <div style="background-color:#089392;padding: 5px;margin-bottom: 5px;" title="Predicted value: -1.67506080104364">
+          <span style="background-color:#06A092;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.390903253243002">so</span>
+          <span style="background-color:#EAE19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.00291169970254891">i</span>
+          <span style="background-color:#D6DC93;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0444983673042308">am</span>
+          <span style="background-color:#D6DC93;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0426111151767998">very</span>
+          <span style="background-color:#CDDA8F;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0634407740167049">sad</span>
+          <span style="background-color:#32B08D;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.317414600656128">to</span>
+          <span style="background-color:#81C782;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.198425772437548">have</span>
+          <span style="background-color:#8CCA82;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.178238363732383">missed</span>
+          <span style="background-color:#5DBE85;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.245570665442169">that</span>
+          <span style="background-color:#DFDF97;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0294064913475902">.</span>
+        </div>
+        <div style="background-color:#EAB06F;padding: 5px;margin-bottom: 5px;" title="Predicted value: 0.608828933070446">
+          <span style="background-color:#E27270;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.350253727011909">i</span>
+          <span style="background-color:#EABB75;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.124874901761299">have</span>
+          <span style="background-color:#E9A26A;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.207712908236627">felt</span>
+          <span style="background-color:#E5816B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.304281357635296">very</span>
+          <span style="background-color:#E9A26A;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.208026491851376">overwhelmed</span>
+          <span style="background-color:#E89969;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.231305573999476">as</span>
+          <span style="background-color:#E9A86B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.186622097367589">a</span>
+          <span style="background-color:#EAB06F;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.164840136908509">mum</span>
+          <span style="background-color:#EACE86;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0580422525897043">as</span>
+          <span style="background-color:#E27270;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.349711968741566">i</span>
+          <span style="background-color:#E9A56A;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.199217927793875">have</span>
+          <span style="background-color:#E3786E;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.327552783504125">been</span>
+          <span style="background-color:#DA6477;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.39265530821182">stuck</span>
+          <span style="background-color:#E57E6C;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.313567488789829">home</span>
+          <span style="background-color:#E89468;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.245538206528453">with</span>
+          <span style="background-color:#D6DC93;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.045276268151855">a</span>
+          <span style="background-color:#42B58A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.294384691882941">newborn</span>
+          <span style="background-color:#BFD68B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0880384243167941">and</span>
+          <span style="background-color:#8CCA82;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.178939312014938">a</span>
+          <span style="background-color:#B6D488;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.103558703250738">4</span>
+          <span style="background-color:#BFD68B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0907729680755636">year</span>
+          <span style="background-color:#5DBE85;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.24791740230374">old</span>
+          <span style="background-color:#DBDE95;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0355130962816296">,</span>
+          <span style="background-color:#42B58A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.292859370308108">who</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0211586044105632">is</span>
+          <span style="background-color:#BBD589;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0967917550473406">missing</span>
+          <span style="background-color:#17A690;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.366452331042616">school</span>
+          <span style="background-color:#11A491;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.370838253669626">and</span>
+          <span style="background-color:#EAD991;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0292034298730899">friends</span>
+          <span style="background-color:#42B58A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.290486495132267">and</span>
+          <span style="background-color:#27AC8F;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.339505569683427">his</span>
+          <span style="background-color:#63C084;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.241313501509184">behaviour</span>
+          <span style="background-color:#D2DB91;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0532472406461672">is</span>
+          <span style="background-color:#B6D488;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.103857724521054">hard</span>
+          <span style="background-color:#C4D78C;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0827092962215161">to</span>
+          <span style="background-color:#E57E6C;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.31450284053798">cope</span>
+          <span style="background-color:#38B28C;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.311624810047593">with</span>
+          <span style="background-color:#48B78A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.287018309545537">when</span>
+          <span style="background-color:#EAD48B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.048635580162629">you</span>
+          <span style="background-color:#EAC179;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.109459816603693">feel</span>
+          <span style="background-color:#EAB973;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.13605907833373">trapped</span>
+          <span style="background-color:#97CC83;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.164441238119565">in</span>
+          <span style="background-color:#EACC83;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0694034920444675">your</span>
+          <span style="background-color:#E89468;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.253197052988215">home</span>
+          <span style="background-color:#DFDF97;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0307330484463654">.</span>
+        </div>
+        <h3>
+          Predicted score: 
+          10.58
+          , True score: 
+          6
+          , Reference score: 
+          11.77
+        </h3>
+      </div>
+    </div>
+    <div id="paragraph3" style="display: none;">
+      <div style="background-color:#9DCD84;padding: 10px;margin-bottom: 10px;" title="Predicted value:  8.91127480248239">
+        <div style="background-color:#089392;padding: 5px;margin-bottom: 5px;" title="Predicted value: -2.86245588184433">
+          <span style="background-color:#E79169;padding: 0 2px;margin: 0 1px;" title="Predicted value: 1.03652823386225">i</span>
+          <span style="background-color:#D2DB91;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.229553079045813">have</span>
+          <span style="background-color:#C9D98E;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.287437712728102">been</span>
+          <span style="background-color:#EAB370;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.603480611430961">neither</span>
+          <span style="background-color:#089392;padding: 0 2px;margin: 0 1px;" title="Predicted value: -1.79597368075156">happy</span>
+          <span style="background-color:#38B28C;padding: 0 2px;margin: 0 1px;" title="Predicted value: -1.25442197972843">or</span>
+          <span style="background-color:#11A491;padding: 0 2px;margin: 0 1px;" title="Predicted value: -1.512973761457">unhappy</span>
+          <span style="background-color:#5DBE85;padding: 0 2px;margin: 0 1px;" title="Predicted value: -1.00816981957214">in</span>
+          <span style="background-color:#81C782;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.807173883961393">recent</span>
+          <span style="background-color:#D2DB91;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.234647557649754">weeks</span>
+          <span style="background-color:#63C084;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.970292509070559">,</span>
+          <span style="background-color:#E3786E;padding: 0 2px;margin: 0 1px;" title="Predicted value: 1.32458447597119">i</span>
+          <span style="background-color:#E8E19B;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.0351825504293103">have</span>
+          <span style="background-color:#EAB06F;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.660159329516655">just</span>
+          <span style="background-color:#E9AB6C;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.730514625956291">been</span>
+          <span style="background-color:#D6DC93;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.185299264617531">getting</span>
+          <span style="background-color:#BBD589;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.417094803133385">on</span>
+          <span style="background-color:#48B78A;padding: 0 2px;margin: 0 1px;" title="Predicted value: -1.1730597158446">with</span>
+          <span style="background-color:#E9A86B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.745421835125198">my</span>
+          <span style="background-color:#ACD186;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.509577943756444">life</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0593244504766342">,</span>
+          <span style="background-color:#ACD186;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.499614472512421">taking</span>
+          <span style="background-color:#EADB94;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.0891845824787133">it</span>
+          <span style="background-color:#92CB83;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.698919471117036">one</span>
+          <span style="background-color:#E9A86B;padding: 0 2px;margin: 0 1px;" title="Predicted value: 0.774713716044446">day</span>
+          <span style="background-color:#E89468;padding: 0 2px;margin: 0 1px;" title="Predicted value: 1.00184442649965">at</span>
+          <span style="background-color:#D2DB91;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.214780565374269">a</span>
+          <span style="background-color:#D25B7D;padding: 0 2px;margin: 0 1px;" title="Predicted value: 1.7283522606803">time</span>
+          <span style="background-color:#DBDE95;padding: 0 2px;margin: 0 1px;" title="Predicted value: -0.1334200438003">.</span>
+        </div>
+        <h3>
+          Predicted score: 
+          8.91
+          , True score: 
+          11
+          , Reference score: 
+          11.77
+        </h3>
+      </div>
+    </div>
+    <div style="margin-top: 10px;">
+      <h3>Legend</h3>
+      <span style="background-color:#089392;padding: 5px;margin-right: 5px;">0</span>
+      <span style="background-color:#6EC382;padding: 5px;margin-right: 5px;">6.75</span>
+      <span style="background-color:#EAE19B;padding: 5px;margin-right: 5px;">13.5</span>
+      <span style="background-color:#E89C69;padding: 5px;margin-right: 5px;">20.25</span>
+      <span style="background-color:#CF597E;padding: 5px;margin-right: 5px;">27</span>
+    </div>
+    <div id="shapley_legend1" style="display: block;">
+      <div style="margin-top: 10px;">
+        <h3>Token Legend</h3>
+        <span style="background-color:#089392;padding: 5px;margin-right: 5px;">-1.068</span>
+        <span style="background-color:#6EC382;padding: 5px;margin-right: 5px;">-0.534</span>
+        <span style="background-color:#EAE19B;padding: 5px;margin-right: 5px;">0</span>
+        <span style="background-color:#E89C69;padding: 5px;margin-right: 5px;">0.534</span>
+        <span style="background-color:#CF597E;padding: 5px;margin-right: 5px;">1.068</span>
+      </div>
+      <div style="margin-top: 10px;">
+        <h3>Sentence Legend</h3>
+        <span style="background-color:#089392;padding: 5px;margin-right: 5px;">-4.54</span>
+        <span style="background-color:#6EC382;padding: 5px;margin-right: 5px;">-2.27</span>
+        <span style="background-color:#EAE19B;padding: 5px;margin-right: 5px;">0</span>
+        <span style="background-color:#E89C69;padding: 5px;margin-right: 5px;">2.27</span>
+        <span style="background-color:#CF597E;padding: 5px;margin-right: 5px;">4.54</span>
+      </div>
+    </div>
+    <div id="shapley_legend2" style="display: none;">
+      <div style="margin-top: 10px;">
+        <h3>Token Legend</h3>
+        <span style="background-color:#089392;padding: 5px;margin-right: 5px;">-0.441</span>
+        <span style="background-color:#6EC382;padding: 5px;margin-right: 5px;">-0.2205</span>
+        <span style="background-color:#EAE19B;padding: 5px;margin-right: 5px;">0</span>
+        <span style="background-color:#E89C69;padding: 5px;margin-right: 5px;">0.2205</span>
+        <span style="background-color:#CF597E;padding: 5px;margin-right: 5px;">0.441</span>
+      </div>
+      <div style="margin-top: 10px;">
+        <h3>Sentence Legend</h3>
+        <span style="background-color:#089392;padding: 5px;margin-right: 5px;">-1.675</span>
+        <span style="background-color:#6EC382;padding: 5px;margin-right: 5px;">-0.8375</span>
+        <span style="background-color:#EAE19B;padding: 5px;margin-right: 5px;">0</span>
+        <span style="background-color:#E89C69;padding: 5px;margin-right: 5px;">0.8375</span>
+        <span style="background-color:#CF597E;padding: 5px;margin-right: 5px;">1.675</span>
+      </div>
+    </div>
+    <div id="shapley_legend3" style="display: none;">
+      <div style="margin-top: 10px;">
+        <h3>Token Legend</h3>
+        <span style="background-color:#089392;padding: 5px;margin-right: 5px;">-1.795</span>
+        <span style="background-color:#6EC382;padding: 5px;margin-right: 5px;">-0.8975</span>
+        <span style="background-color:#EAE19B;padding: 5px;margin-right: 5px;">0</span>
+        <span style="background-color:#E89C69;padding: 5px;margin-right: 5px;">0.8975</span>
+        <span style="background-color:#CF597E;padding: 5px;margin-right: 5px;">1.795</span>
+      </div>
+      <div style="margin-top: 10px;">
+        <h3>Sentence Legend</h3>
+        <span style="background-color:#089392;padding: 5px;margin-right: 5px;">-2.862</span>
+        <span style="background-color:#6EC382;padding: 5px;margin-right: 5px;">-1.431</span>
+        <span style="background-color:#EAE19B;padding: 5px;margin-right: 5px;">0</span>
+        <span style="background-color:#E89C69;padding: 5px;margin-right: 5px;">1.431</span>
+        <span style="background-color:#CF597E;padding: 5px;margin-right: 5px;">2.862</span>
+      </div>
+    </div>
+    <div id="histogram1" style="display: block;"></div>
+    <div id="histogram0" style="display: none;"></div>
+    <script>
+    function showSelectedParagraph() {
+      var selectedParagraph = document
+        .getElementById('paragraphSelector').value;
+      var paragraphs = document.querySelectorAll('[id^=paragraph]');
+      var histograms = document.querySelectorAll('[id^=histogram]');
+      var shapley_legends = document.querySelectorAll('[id^=shapley_legend]');
+      paragraphs.forEach(function(paragraph) {
+        paragraph.style.display = 'none';
+      });
+      histograms.forEach(function(histogram) {
+        histogram.style.display = 'none';
+      })
+      shapley_legends.forEach(function(legend) {
+        legend.style.display = 'none';
+      })
+      document
+        .getElementById('paragraph' + selectedParagraph)
+        .style.display = 'block';
+      document
+        .getElementById('paragraphSelector')
+        .style.display = 'block';
+      var histogram = document
+        .getElementById('histogram' + selectedParagraph)
+      if (histogram) {
+        histogram.style.display = 'block';
+      }
+      var legend = document
+        .getElementById('shapley_legend' + selectedParagraph)
+      if (legend) {
+        legend.style.display = 'block';
+      }
+    }
+  </script>
+  </body>
+</html>
+</html>

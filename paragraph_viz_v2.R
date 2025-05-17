@@ -81,7 +81,31 @@ decodeToken <- function(aStringList, modelName) {
 #' @param subword_sign (str) The sign used as the split among subwords.
 #' @return A boolean value.
 #' @noRd
-is_word_start <- function(token, subword_sign = "##") {
+is_word_start <- function(tokens, i, subword_sign = "##") {
+  token <- tokens[i]
+  # List of tokens that signal sentence boundaries (or standalone tokens).
+  special_tokens <- c("<s>", "</s>", "[CLS]", "[SEP]")
+
+  # Always mark the very first token as a new word.
+  if (i == 1) {
+    return(TRUE)
+  }
+
+  # If the previous token is a special token, mark current token as a new word.
+  if (tokens[i - 1] %in% special_tokens) {
+    return(TRUE)
+  }
+
+  # If the token itself is a special token, mark it as a new word.
+  if (token %in% special_tokens) {
+    return(TRUE)
+  }
+
+  # If the token is a punctuation, mark it as a new word
+  if (grepl("^(?:[[:punct:]])+$", token)) {
+    return(TRUE)
+  }
+
   if (subword_sign == "##") {
     return(!startsWith(token, subword_sign))
   } else if (subword_sign == "Ġ") {
@@ -104,11 +128,11 @@ is_word_start <- function(token, subword_sign = "##") {
 getSubWordIDs <- function(tokens, modelName) {
   # Mark the start of each word.
   subword_sign <- get_subword_sign(modelName)
-  word_starts <- sapply(
-    tokens, is_word_start,
-    subword_sign
-  )
 
+  # Compute word start flags with index awareness.
+  word_starts <- sapply(seq_along(tokens), function(i) {
+    is_word_start(tokens, i, subword_sign)
+  })
 
   # Generate a tibble for processing
   subword_tibble <- tibble::tibble(
@@ -140,7 +164,7 @@ getSubWordIDs <- function(tokens, modelName) {
 #' @importFrom furrr future_pmap
 #' @return The tranformed tokens tibble without subword tokens.
 #' @noRd
-combineSubWords <- function(tokens, modelName) {
+combineSubWords <- function(tokens, modelName, normalize = FALSE) {
   subwordIDs <- getSubWordIDs(tokens$tokens, modelName)
 
   if (is.null(subwordIDs)) {
@@ -157,15 +181,25 @@ combineSubWords <- function(tokens, modelName) {
     combined_word <- trimws(combined_word)
     # Replace the inital subword with the combined word and set the rest to NA
     tokens$tokens[start:end] <- c(combined_word, rep(NA, end - start))
+    # If we want to generalize by tokens in word set n to number of tokens
+    # else set n to 1
+    if (normalize) {
+      n <- end - start + 1
+    } else {
+      n <- 1
+    }
     # Set the words embeddings to the average of the subwords embeddings.
-
     tokens <- tokens %>%
       mutate(predicted_value =
-               replace(predicted_value, start, sum(predicted_value[start:end])))
+               replace(predicted_value, start,
+                       sum(predicted_value[start:end]) / n))
+
   }
+  # Rename tokens to words
+  words <- tokens %>% rename(words = 1)
   # Remove rows with NA tokens (i.e., former subwords)
-  tokens <- tidyr::drop_na(tokens)
-  return(tokens)
+  words <- tidyr::drop_na(words)
+  return(words)
 }
 
 #### sentence process ####
@@ -215,10 +249,10 @@ getCLSSEPTokenRows <- function(tokenEmbeddings, modelName) {
 
   # Get tibbles with the row numbers of the tokens "[CLS]" and "[SEP]"
   rowCLS <-
-    which(tokenEmbeddings[["tokens"]] == start_token, arr.ind = TRUE) %>%
+    which(tokenEmbeddings[[1]] == start_token, arr.ind = TRUE) %>%
     tibble::as_tibble()
   rowSEP <-
-    which(tokenEmbeddings[["tokens"]] == end_token, arr.ind = TRUE) %>%
+    which(tokenEmbeddings[[1]] == end_token, arr.ind = TRUE) %>%
     tibble::as_tibble()
 
   # Combine the tibbles of row numbers
@@ -229,26 +263,6 @@ getCLSSEPTokenRows <- function(tokenEmbeddings, modelName) {
 
   return(rowCLSSEP)
 }
-
-#### Training functions ####
-#' Train the language model.
-#' @param embeddings (R_obj) An R obj containing the information of
-#' "token", "sentence",  and "paragraph".
-#' @param targets (R_obj) The training target.
-#' @param languageLevel (str) "token", "sentence", "paragraph" or "all".
-#'  The default is "all".
-#' @param modelName (str) The transformer model in use.
-#' @importFrom future future value
-#' @return The trained model
-#' @NoRd
-trainLanguageModel <- function(embeddings, targets, modelName, ...) {
-  model <-
-    getTrainableParagraphs(embeddings[["paragraphs"]], targets) %>%
-    train(...)
-
-  return(model)
-}
-
 
 #### Prediction functions ####
 
@@ -296,17 +310,14 @@ predictLanguage <- function(embeddings, model, ...) {
   )
 }
 
-tokensToWords <- function(tokenContributions, modelName) {
-  start_token <- get_start_token(modelName)
-  end_token <- get_end_token(modelName)
-
+tokensToWords <- function(tokenContributions, modelName, normalize = FALSE) {
   wordContributions <- tokenContributions %>%
-    purrr::map(combineSubWords, modelName)
+    purrr::map(combineSubWords, modelName, normalize)
 
   return(wordContributions)
 }
 
-wordsToSentences <- function(wordContributions, modelName) {
+wordsToSentences <- function(wordContributions, modelName, normalize = FALSE) {
   # Process each token tibble to create a sentence-level tibble
   sentenceContributions <- wordContributions %>%
     purrr::map(function(words) {
@@ -326,10 +337,15 @@ wordsToSentences <- function(wordContributions, modelName) {
 
           # Decode the tokens between the
           # start and end indices to form a sentence.
-          sentence <- decodeToken(words$tokens[startRow:endRow],
+          sentence <- decodeToken(words$words[startRow:endRow],
                                   modelName) %>% trimws()
+          if (normalize) {
+            n <- endRow - startRow + 1
+          } else {
+            n <- 1
+          }
           # Sum predicted values for these tokens.
-          predicted_value <- sum(words$predicted_value[startRow:endRow])
+          predicted_value <- sum(words$predicted_value[startRow:endRow]) / n
 
           tibble(
             sentence = sentence,
@@ -350,9 +366,9 @@ getContributionScores <- function(
   predictions,
   model,
   modelName,
-  referenceValue = NULL
+  referenceValue = NULL,
+  globalNormalization = FALSE
 ) {
-
   # Get beta0 from the model to calculate contribution score.
   if (is.null(referenceValue)) {
     referenceValue <- model$final_model$fit$fit$fit$a0[[1]]
@@ -360,19 +376,25 @@ getContributionScores <- function(
 
   tokenContributions <- predictions$tokens %>%
     purrr::map(~ {
-      .x %>%
-        mutate(across(-1, ~ . - referenceValue)) %>%
-        mutate(across(-1, ~ . / n()))
+      .x <- .x %>%
+        mutate(across(predicted_value, ~ . - referenceValue))
+      if (!globalNormalization) {
+        .x <- .x %>% mutate(across(predicted_value, ~ . / n()))
+      }
+      return(.x)
     })
 
-  wordContributions <- tokensToWords(tokenContributions, modelName)
-  sentenceContributions <- wordsToSentences(wordContributions, modelName)
+  wordContributions <-
+    tokensToWords(tokenContributions, modelName, globalNormalization)
+  sentenceContributions <-
+    wordsToSentences(wordContributions, modelName, globalNormalization)
 
   contributions <- tibble(
     tokens = tokenContributions,
     words = wordContributions,
     sentences = sentenceContributions,
-    paragraphs = predictions$paragraphs
+    paragraphs = predictions$paragraphs,
+    referenceValue = referenceValue
   )
 
   return(contributions)
@@ -475,7 +497,7 @@ generate_words_html <- function(words) {
         "margin: 0 1px;" # Space between tokens
       ),
       title = paste("Predicted value:", word$predicted_value), # Hover text
-      word$tokens
+      word$words
     )
   })
   return(unname(token_html))
@@ -511,27 +533,29 @@ generate_sentences_html <- function(sentences, words_html, includeCLSSEP) {
 }
 
 # Generate paragraph HTML
-generate_paragraph_html <- function(paragraph, sentences_html, target) {
+generate_paragraph_html <- function(paragraph, sentences_html,
+                                    target, referenceValue) {
   return(
     div(
       style = paste0(
         "background-color:", paragraph$colorCodes, ";",
-        "padding: 10px;", # Padding for the paragraph
-        "margin-bottom: 10px;" # Space between paragraphs
+        "padding: 10px;"
       ),
       title = paste("Predicted value: ", paragraph$predicted_value),
       sentences_html,
       tags$h3(
         "Predicted score: ",
         trunc(paragraph$predicted_value * 10^2) / 10^2,
-        ", True score: ", target
+        ", True score: ", target,
+        ", Reference score: ",
+        trunc(referenceValue * 10^2) / 10^2,
       ),
     )
   )
 }
 
 generate_legend_html <- function(lower_limit, upper_limit,
-                                 palette, title = "Legend") {
+                                 palette, title = "Paragraph Legend") {
   legend_values <- seq(lower_limit, upper_limit, length.out = 5)
   legend_colors <- generate_gradient(
     legend_values, lower_limit,
@@ -549,7 +573,6 @@ generate_legend_html <- function(lower_limit, upper_limit,
   })
 
   legend_html <- div(
-    style = "margin-top: 10px;", # Space above the legend
     h3(title),
     legend_html
   )
@@ -559,22 +582,11 @@ generate_legend_html <- function(lower_limit, upper_limit,
 
 generate_legend_htmls <- function(data, limits, palette) {
   legend_htmls <- lapply(seq(nrow(data$paragraphs)), function(i) {
-    upper_limit <- max(abs(unlist(data$words[[i]]$predicted_value)))
-    upper_limit <- trunc(upper_limit * 10^3) / 10^3
-
-    lower_limit <- 0 - max(abs(unlist(data$words[[i]]$predicted_value)))
-    lower_limit <- trunc(lower_limit * 10^3) / 10^3
-
-    token_legend_html <- generate_legend_html(lower_limit, upper_limit,
-      palette,
-      title = "Token Legend"
-    )
-
     upper_limit <- max(abs(unlist(data$sentences[[i]]$predicted_value)))
-    upper_limit <- trunc(upper_limit * 10^3) / 10^3
+    upper_limit <- trunc(upper_limit * 10^2) / 10^2
 
     lower_limit <- 0 - max(abs(unlist(data$sentences[[i]]$predicted_value)))
-    lower_limit <- trunc(lower_limit * 10^3) / 10^3
+    lower_limit <- trunc(lower_limit * 10^2) / 10^2
 
     sentence_legend_html <- generate_legend_html(lower_limit,
       upper_limit,
@@ -582,12 +594,27 @@ generate_legend_htmls <- function(data, limits, palette) {
       title = "Sentence Legend"
     )
 
+    upper_limit <- max(abs(unlist(data$words[[i]]$predicted_value)))
+    upper_limit <- trunc(upper_limit * 10^2) / 10^2
+
+    lower_limit <- 0 - max(abs(unlist(data$words[[i]]$predicted_value)))
+    lower_limit <- trunc(lower_limit * 10^2) / 10^2
+
+    token_legend_html <- generate_legend_html(lower_limit, upper_limit,
+      palette,
+      title = "Word Legend"
+    )
+
     return(
       div(
         id = paste0("shapley_legend", i),
-        style = ifelse(i == 1, "display: block;", "display: none;"),
-        token_legend_html,
-        sentence_legend_html
+        style = ifelse(
+          i == 1,
+          "display: flex; align-items: flex-start; gap: 1rem;",
+          "display: none; align-items: flex-start; gap: 1rem;"
+        ),
+        sentence_legend_html,
+        token_legend_html
       )
     )
   })
@@ -618,6 +645,8 @@ generate_histogram_html <- function(data) {
 generateDocument <- function(
     data,
     targets,
+    modelName,
+    referenceValue,
     limits,
     palette = NULL,
     shapley = FALSE,
@@ -639,7 +668,8 @@ generateDocument <- function(
   # Generate list of paragraph htmls.
   paragraph_htmls <- mapply(
     function(paragraph, sentences_html, target) {
-      generate_paragraph_html(paragraph, sentences_html, target)
+      generate_paragraph_html(paragraph, sentences_html,
+                              target, data$referenceValue[1])
     }, split(data$paragraphs, seq_len(nrow(data$paragraphs))),
     sentences_htmls, split(targets, seq_len(nrow(targets))),
     SIMPLIFY = FALSE
@@ -656,13 +686,13 @@ generateDocument <- function(
   # Generate list of histogram htmls. One for each paragraph.
   histogram_htmls <- NULL
   if (!shapley) {
-    histogram_htmls <- lapply(data$tokens, generate_histogram_html)
+    histogram_htmls <- lapply(data$words, generate_histogram_html)
   }
 
   # Create dropdown menu for paragraph selection
   dropdown_menu <- tags$select(
     id = "paragraphSelector",
-    style = "margin-bottom: 10px;",
+    style = "margin-bottom: 10px; line-height: normal; height: 30px;",
     onchange = "showSelectedParagraph()",
     lapply(1:length(paragraph_htmls), function(i) {
       tags$option(value = i, paste("Paragraph", i))
@@ -715,20 +745,49 @@ generateDocument <- function(
       var legend = document
         .getElementById('shapley_legend' + selectedParagraph)
       if (legend) {
-        legend.style.display = 'block';
+        legend.style.display = 'flex';
       }
     }
   "))
 
   # Wrap in a basic HTML structure
   full_html <- tags$html(
-    tags$head(tags$title("Text Visualization")),
+    tags$head(
+      tags$title("Text Visualization"),
+      tags$style(HTML("
+        /* Adjust margins for headings and paragraphs */
+        h1, h2, p {
+          margin-top: 5px;
+          margin-bottom: 5px;
+        }
+        h3 {
+          margin-top: 0px;
+          margin-bottom: 10px;
+        }
+        /* You can also override body margin if desired */
+        body {
+          margin: 5px; 
+          padding: 5px;
+        }
+    "))
+    ),
     tags$body(
-      tags$h1("Text Prediction Visualization"),
-      dropdown_menu,
-      paragraph_htmls,
-      legend_html,
-      shapley_legend_htmls,
+      style = "margin: 5px;",
+      tags$div(
+        style = "display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%;",
+        tags$h1("Text Prediction Visualization"),
+        dropdown_menu
+      ),
+      tags$h2(modelName),
+      tags$div(
+        style = "margin: 0; padding: 0;",
+        paragraph_htmls
+      ),
+      tags$div(
+        style = "display: flex; align-items: flex-start; gap: 0.5rem; margin: 5px; padding: 0;",
+        legend_html,
+        shapley_legend_htmls
+      ),
       histogram_htmls,
       js_code
     )

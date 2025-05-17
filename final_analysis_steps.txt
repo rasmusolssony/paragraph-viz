@@ -1,0 +1,10 @@
+1. Create Rmd file to, create embeddings, train the models, predict and calculate contributions
+
+3. Create Rmd file for expert clean up.
+
+4. Create Rmd file for generating metrics.
+  4.1 Create functions that compares all experts with each other and every model.
+    4.1.1 For paragraph compare everything with pearson r and spearmans
+    4.1.2 for sentences compare everything with spearman and krippendorfs alpha. 
+    Use paragraph normalization for internal and sentence normalization for internal
+    4.1.3 for words compare everything with f1 score and krippendorfs alpha no normalization needed.

@@ -33,8 +33,8 @@ options(future.globals.maxSize = 1.0 * 1e10)
 
 # Select model, data and parameters
 ```{r data import, echo=TRUE}
-nameLLM <- "bert-base-uncased"
-#nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
+#nameLLM <- "bert-base-uncased"
+nameLLM <- "mixedbread-ai/mxbai-embed-large-v1"
 
 text_set <- "Deptext"
 scale_total <- "PHQtot" #for 1000 dataset
@@ -44,7 +44,7 @@ data <- read_csv("dataset.csv")
 data <- data[, c(text_set, scale_total)]
 data <- drop_na(data)
 data_length <- nrow(data)
-
+data[[text_set]] <- gsub("\\.(?![\\.\\s])", ". ", data[[text_set]], perl = TRUE)
 # size of train and test sets
 test_size <- 50
 train_size <- data_length - test_size
@@ -53,12 +53,26 @@ model_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size, 
 embeddings_folder_path <- paste0("models/", nameLLM, "-", text_set, "-", train_size)
 save_model <- TRUE
 save_embeddings <- TRUE
-force_train <- FALSE
+save_predictions <- TRUE
+save_contributions <- TRUE
+force_rerun <- FALSE
 ```
+
+# Save to file
+```{r save matrix, echo=TRUE}
+save <- function(values, dir, fileName) {
+  if (!dir.exists(file.path(dir))) {
+    dir.create(file.path(dir))
+  }
+  saveRDS(values, paste0(dir, "/", fileName))
+}
+
+```
+
 
 # Create embeddings
 ```{r train, echo=TRUE}
-if(!file.exists(paste0(embeddings_folder_path, "/embeddings.rds")) || force_train){
+if(!file.exists(paste0(embeddings_folder_path, "/embeddings.rds")) || force_rerun){
 
   embed <- createEmbeddings(
                       data[(test_size+1):data_length, text_set],
@@ -67,13 +81,10 @@ if(!file.exists(paste0(embeddings_folder_path, "/embeddings.rds")) || force_trai
                       dim_name = FALSE, # For prediction of new texts, this param must be FALSE,
                       trust_remote_code = TRUE,
   )
-
   if (save_embeddings) {
-    if(!dir.exists(file.path(embeddings_folder_path))){
-      dir.create(file.path(embeddings_folder_path))
-    }
-    saveRDS(embed, paste0(embeddings_folder_path, "/embeddings.rds"))
+    save(embed, embeddings_folder_path, "/embeddings.rds")
   }
+
 } else {
   embed <- readRDS(paste0(embeddings_folder_path, "/embeddings.rds"))
 }
@@ -81,20 +92,17 @@ if(!file.exists(paste0(embeddings_folder_path, "/embeddings.rds")) || force_trai
 
 # Train Model / Load Model
 ```{r train, echo=TRUE}
-if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_train){
-
-  theModels <- trainLanguageModel(embed, # embedding
-                        data[(test_size+1):data_length, scale_total], # scale values, target
-                        "paragraph", # options: "token", "sentence", "paragraph", "all", # "all" include all the previous models
+if(!file.exists(paste0(model_folder_path, "/models.rds")) || force_rerun) {
+### FIX; TODO;
+  theModels <- trainLanguageModel(
+    x = embed, # embedding
+                        y = data[(test_size+1):data_length, scale_total], # scale values, target
                         modelName = nameLLM,
-                        mixture = 1
+                        mixture = 0
   )
 
   if (save_model) {
-    if(!dir.exists(file.path(model_folder_path))){
-      dir.create(file.path(model_folder_path))
-    }
-    saveRDS(theModels, paste0(model_folder_path, "/models.rds"))
+    save(theModels, model_folder_path, "/models.rds")
   }
 
 } else {
@@ -108,13 +116,61 @@ source(
   "paragraph_viz_v2.R", # plotting functions
   encoding=localeToCharset()
 )
-paragraphs_to_plot <- 1:50
+paragraphs_to_plot <- 1:test_size
+evaluation_folder_path <- paste0("models/", nameLLM, "-", text_set, "-test_set-", test_size)
+if(!file.exists(paste0(evaluation_folder_path, "/embeddings.rds")) || force_rerun) {
 
-toPredEmbed <- createEmbeddings(data[paragraphs_to_plot,text_set],
-                         model=nameLLM,
-                         dim_name=FALSE,
-                         device="gpu",
-                         trust_remote_code = TRUE)
+  testEmbed <- createEmbeddings(data[paragraphs_to_plot, text_set],
+                          model=nameLLM,
+                          dim_name=FALSE,
+                          device="gpu",
+                          trust_remote_code = TRUE)
+
+
+  if (save_embeddings) {
+    save(testEmbed, evaluation_folder_path, "/embeddings.rds")
+  }
+} else {
+  testEmbed <- readRDS(paste0(evaluation_folder_path, "/embeddings.rds"))
+}
+```
+
+```{r}
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding=localeToCharset()
+)
+
+if (!file.exists(paste0(evaluation_folder_path, "/predictions.rds")) || force_rerun ) {
+  predictions <- predictLanguage(testEmbed, theModels$paragraphModel)
+
+  if (save_predictions) {
+    saveRDS(predictions, evaluation_folder_path, "/predictions.rds")
+  }
+} else {
+  predictions <- readRDS(paste0(evaluation_folder_path, "/predictions.rds"))
+}
+```
+
+```{r}
+source(
+  "paragraph_viz_v2.R", # plotting functions
+  encoding=localeToCharset()
+)
+save_contributions <- TRUE
+referenceValue <- theModels$paragraphModel$final_model$fit$fit$fit$a0[[1]]
+contributions_file <- paste0("/contributions-ref_", referenceValue, ".rds")
+
+if (!file.exists(paste0(evaluation_folder_path, contributions_file)) || force_rerun) {
+
+  contributions <- getContributionScores(predictions, theModels$paragraphModel, nameLLM, referenceValue, FALSE)
+
+  if (save_contributions) {
+    saveRDS(contributions, evaluation_folder_path, contributions_file)
+  }
+} else {
+  contributions <- readRDS(paste0(evaluation_folder_path, contributions_file))
+}
 
 ```
 
@@ -123,20 +179,27 @@ source(
   "paragraph_viz_v2.R", # plotting functions
   encoding=localeToCharset()
 )
-predictions <- predictLanguage(toPredEmbed, theModels$paragraphModel)
+save_contributions <- TRUE
+referenceValue <- theModels$paragraphModel$final_model$fit$fit$fit$a0[[1]]
+general_contributions_file <- paste0("/general_contributions-ref_", referenceValue, ".rds")
+
+if (!file.exists(paste0(evaluation_folder_path, general_contributions_file)) || force_rerun ) {
+
+  general_contributions <- getContributionScores(predictions, theModels$paragraphModel, nameLLM, referenceValue, TRUE)
+
+  if (save_contributions) {
+    saveRDS(general_contributions, evaluation_folder_path, general_contributions_file)
+  }
+} else {
+  general_contributions <- readRDS(paste0(evaluation_folder_path, general_contributions_file))
+}
 
 ```
 
+# Pearson Correlation
 ```{r}
-source(
-  "paragraph_viz_v2.R", # plotting functions
-  encoding=localeToCharset()
-)
-contributions <- getContributionScores(predictions, theModels$paragraphModel, nameLLM)
-
 print("Pearson correlation: ")
 print(pearsonCorrelation(predictions$paragraphs$predicted_value, data[paragraphs_to_plot,scale_total]))
-
 ```
 ```{r}
 source(

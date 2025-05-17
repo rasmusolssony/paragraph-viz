@@ -1,0 +1,577 @@
+```{r}
+library(tidyverse)
+library(purrr)
+library(dplyr)
+library(irr)         # for kripp.alpha
+library(yardstick)   # for precision, recall, and F1 (or use MLmetrics if preferred)
+library(MLmetrics)   # if you prefer to use F1_Score
+library(psych)
+```
+
+```{r}
+models <- list(
+  "Bert" = list(
+    "pNorm" = readRDS("models/final/bert-base-uncased/contributions-ref_11.7737306843267.rds"),
+    "sNorm" = readRDS("models/final/bert-base-uncased/global_contributions-ref_11.7737306843267.rds")
+  ),
+  "RoBERTa" = list(
+    "pNorm" = readRDS("models/final/roberta-large/contributions-ref_11.7737306843267.rds"),
+    "sNorm" = readRDS("models/final/roberta-large/global_contributions-ref_11.7737306843267.rds")
+  ),
+  "mxbai" = list(
+    "pNorm" = readRDS("models/final/mixedbread-ai/mxbai-embed-large-v1/contributions-ref_11.7737306843267.rds"),
+    "sNorm" = readRDS("models/final/mixedbread-ai/mxbai-embed-large-v1/global_contributions-ref_11.7737306843267.rds")
+  )
+)
+```
+
+```{r}
+experts <- list(
+  "Expert 1" = readRDS("annotations_clara_cleaned.rds"),
+  "Expert 2" = readRDS("annotations_veerle_cleaned.rds"),
+  "Expert 3" = readRDS("annotations_kevin_cleaned.rds"),
+  "Majority" = readRDS("annotations_majority.rds")
+)
+```
+
+```{r}
+data <- read_csv("dataset.csv")
+
+data <- data[, "PHQtot"]
+data <- drop_na(data)
+true_scores <- data[1:50, "PHQtot"]
+
+```
+
+```{r}	
+compute_expert_cor <- function(data, method = "pearson") {
+  names <- names(data)
+  n <- length(names)
+  corr_matrix <- matrix(NA, n, n, dimnames = list(names, names))
+  for (i in seq_len(n)) {
+    for (j in seq_len(n)) {
+      if (i == j) {
+        corr_matrix[i, j] <- 1
+      } else if (i < j) {
+        result <- cor(data[[i]], data[[j]], method = method)
+        corr_matrix[i, j] <- result
+        corr_matrix[j, i] <- result
+      }
+    }
+  }
+  return(corr_matrix)
+}
+
+compute_expert_model_true_cor <- function(
+    expert_list, model_list, true_scores, method = "pearson") {
+  expert_names <- names(expert_list)
+  model_names <- names(model_list)
+  true_name <- "true_phq9"
+  n_experts <- length(expert_names)
+  n_models <- length(model_names)
+  print(c(expert_names, model_names))
+  corr_matrix <-
+    matrix(NA, n_experts + n_models, 1,
+           dimnames = list(c(expert_names, model_names), c(true_name)))
+  for (i in seq_len(n_experts)) {
+    corr_matrix[i, 1] <-
+      cor(expert_list[[i]], true_scores, method = method)
+  }
+  for (i in seq_len(n_models)) {
+    corr_matrix[i + n_experts, 1] <-
+      cor(model_list[[i]], true_scores, method = method)
+  }
+  return(corr_matrix)
+}
+
+compute_expert_model_cor <- function(
+    expert_list, model_list, method = "pearson") {
+  expert_names <- names(expert_list)
+  model_names <- names(model_list)
+  n_experts <- length(expert_names)
+  n_models <- length(model_names)
+  corr_matrix <-
+    matrix(NA, n_experts, n_models, dimnames = list(expert_names, model_names))
+  for (i in seq_len(n_experts)) {
+    for (j in seq_len(n_models)) {
+      corr_matrix[i, j] <-
+        cor(expert_list[[i]], model_list[[j]], method = method)
+    }
+  }
+  return(corr_matrix)
+}
+
+compute_expert_model_accuracy <- function(
+    expert_list, model_list) {
+  expert_names <- names(expert_list)
+  model_names <- names(model_list)
+  n_experts <- length(expert_names)
+  n_models <- length(model_names)
+  corr_matrix <-
+    matrix(NA, n_experts, n_models, dimnames = list(expert_names, model_names))
+  for (i in seq_len(n_experts)) {
+    expert_scores <- get_sentence_sign(expert_list[[i]])
+    for (j in seq_len(n_models)) {
+      model_scores <- get_sentence_sign( model_list[[j]])
+      corr_matrix[i, j] <-
+        Accuracy(y_true = expert_scores, y_pred = model_scores)
+    }
+  }
+  return(corr_matrix)
+}
+
+compute_expert_kappa <- function(expert_list, sentence = FALSE) {
+  names <- names(expert_list)
+  n <- length(names)
+  cohen_kappa <- matrix(NA, n, n, dimnames = list(names, names))
+  for (i in seq_len(n)) {
+    for (j in seq_len(n)) {
+      if (i == j) {
+        cohen_kappa[i, j] <- 1
+      } else if (i < j) {
+        if (sentence) {
+          matrix <-
+            cbind(get_sentence_sign(expert_list[[i]]),
+                  get_sentence_sign(expert_list[[j]]))
+        } else {
+          matrix <- cbind(expert_list[[i]], expert_list[[j]])
+        }
+        cohen_kappa[i, j] <- cohen.kappa(matrix)$kappa
+        cohen_kappa[j, i] <- cohen.kappa(matrix)$kappa
+      }
+    }
+  }
+  return(cohen_kappa)
+}
+
+compute_expert_model_kappa <- function(
+    expert_list,
+    model_list,
+    level = "sentence",
+    word_global = FALSE) {
+
+  expert_names <- names(expert_list)
+  model_names <- names(model_list)
+  n_experts <- length(expert_names)
+  n_models <- length(model_names)
+  cohen_kappa <-
+    matrix(NA, n_experts, n_models, dimnames = list(expert_names, model_names))
+  if (word_global) {
+    for (i in seq_len(n_experts)) {
+      for (j in seq_len(n_models)) {
+        model_scores <- model_list[[j]][[i]]
+        expert_scores <- expert_list[[i]]
+        matrix <- cbind(expert_scores, model_scores)
+        cohen_kappa[i, j] <- cohen.kappa(matrix)$kappa
+      }
+    }
+  } else {
+    for (i in seq_len(n_experts)) {
+      for (j in seq_len(n_models)) {
+        model_scores <- model_list[[j]]
+        if (level == "sentence") {
+          model_scores <- get_sentence_sign(model_scores)
+          expert_scores <- get_sentence_sign(expert_list[[i]])
+        } else if (level == "word") {
+          expert_scores <- expert_list[[i]]
+          model_scores <-
+            get_word_sign(model_scores, expert_scores)
+        } else {
+          stop("Invalid level")
+        }
+        matrix <- cbind(expert_scores, model_scores)
+        cohen_kappa[i, j] <-
+          cohen.kappa(matrix)$kappa
+      }
+    }
+  }
+  return(cohen_kappa)
+}
+
+get_word_sign <- function(scores, expert_ref) {
+  n_positive <- sum(expert_ref == 1, na.rm = TRUE)
+  n_negative <- sum(expert_ref == -1, na.rm = TRUE)
+  sorted_idx <- order(scores, decreasing = TRUE)
+  pred <- rep(0, length(scores))
+  if (n_positive > 0) pred[sorted_idx[1:n_positive]] <- 1
+  if (n_negative > 0)
+    pred[sorted_idx[(length(scores) - n_negative + 1):length(scores)]] <- -1
+  return(pred)
+}
+
+get_sentence_sign <- function(scores) {
+  return(ifelse(scores > 0, 1, -1))
+}
+
+
+```
+
+
+```{r}
+paragraph_metrics <- function(experts, models, true_scores) {
+  expert_ratings <- map(experts, ~ .x$paragraphs$rating)
+  expert_pearson <- compute_expert_cor(expert_ratings, method = "pearson")
+  expert_spearman <- compute_expert_cor(expert_ratings, method = "spearman")
+
+  model_ratings <- map(models, ~ .x$pNorm$paragraphs$predicted_value)
+  expert_model_pearson <-
+    compute_expert_model_cor(expert_ratings, model_ratings, method = "pearson")
+  expert_model_spearman <-
+    compute_expert_model_cor(expert_ratings, model_ratings, method = "spearman")
+
+  expert_model_true_pearson <-
+    compute_expert_model_true_cor(expert_ratings, model_ratings,
+                                  true_scores, method = "pearson")
+
+  expert_model_true_spearman <-
+    compute_expert_model_true_cor(expert_ratings, model_ratings,
+                                  true_scores, method = "spearman")
+  return(list(
+    "expert_pearson" = expert_pearson,
+    "expert_spearman" = expert_spearman,
+    "expert_model_pearson" = expert_model_pearson,
+    "expert_model_spearman" = expert_model_spearman,
+    "expert_model_true_pearson" = expert_model_true_pearson,
+    "expert_model_true_spearman" = expert_model_true_spearman
+  ))
+}
+
+sentence_metrics <- function (experts, models) {
+  expert_ratings_global <- map(experts, ~ bind_rows(.x$sentences)$ranking)
+  expert_pearson_global <-
+    compute_expert_cor(expert_ratings_global, method = "pearson")
+  expert_spearman_global <-
+    compute_expert_cor(expert_ratings_global, method = "spearman")
+  expert_kappa_global <-
+    compute_expert_kappa(expert_ratings_global, sentence = TRUE)
+
+  expert_ratings_local <-
+    map(seq_len(length(experts[[1]]$sentences)), function(para_index) {
+      map(experts, ~ .x$sentences[[para_index]]$ranking)
+    })
+  expert_pearson_local <-
+    map(expert_ratings_local, ~ compute_expert_cor(.x, method = "pearson"))
+  expert_spearman_local <-
+    map(expert_ratings_local, ~ compute_expert_cor(.x, method = "spearman"))
+  expert_kappa_local <-
+    map(expert_ratings_local, ~ compute_expert_kappa(.x, sentence = TRUE))
+
+  model_ratings_global <-
+    map(models, ~ bind_rows(.x$sNorm$sentences)$predicted_value)
+  expert_model_spearman_global <-
+    compute_expert_model_cor(expert_ratings_global,
+                             model_ratings_global, method = "spearman")
+  expert_model_kappa_global <-
+    compute_expert_model_kappa(expert_ratings_global, model_ratings_global)
+
+  model_ratings_local <-
+    map(seq_len(length(models[[1]]$pNorm$sentences)), function(para_index) {
+      map(models, ~ .x$pNorm$sentences[[para_index]]$predicted_value)
+    })
+  expert_model_spearman_local <-
+    map2(expert_ratings_local, model_ratings_local,
+         ~ compute_expert_model_cor(.x, .y, method = "spearman"))
+  expert_model_kappa_local <-
+    map2(expert_ratings_local, model_ratings_local,
+         ~ compute_expert_model_kappa(.x, .y))
+  expert_model_accuracy_local <-
+    map2(expert_ratings_local, model_ratings_local,
+         ~ compute_expert_model_accuracy(.x, .y))
+
+  return(list(
+    "expert_pearson_global" = expert_pearson_global,
+    "expert_spearman_global" = expert_spearman_global,
+    "expert_kappa_global" = expert_kappa_global,
+    "expert_pearson_local" = expert_pearson_local,
+    "expert_spearman_local" = expert_spearman_local,
+    "expert_kappa_local" = expert_kappa_local,
+    "expert_model_spearman_global" = expert_model_spearman_global,
+    "expert_model_kappa_global" = expert_model_kappa_global,
+    "expert_model_spearman_local" = expert_model_spearman_local,
+    "expert_model_kappa_local" = expert_model_kappa_local,
+    "expert_model_accuracy_local" = expert_model_accuracy_local
+  ))
+}
+```
+```{r}
+word_metrics <- function(experts, models) {
+  expert_ratings_global <- map(experts, ~ bind_rows(.x$words)$annotation)
+  expert_kappa_global <-
+    compute_expert_kappa(expert_ratings_global)
+
+  expert_ratings_local <-
+    map(seq_len(length(experts[[1]]$words)), function(para_index) {
+      map(experts, ~ .x$words[[para_index]]$annotation)
+    })
+  expert_kappa_local <- map(expert_ratings_local, ~ compute_expert_kappa(.x))
+
+  model_ratings_global <-
+      map(models, function(model) {
+        map(experts, function(expert) {
+          unlist(map(seq_len(length(models[[1]]$sNorm$words)), function(para_index) {
+            get_word_sign(model$sNorm$words[[para_index]]$predicted_value,
+                          expert$words[[para_index]]$annotation)
+        }))
+      })
+    })
+
+  expert_model_kappa_global <- compute_expert_model_kappa(
+    expert_ratings_global,
+    model_ratings_global,
+    level = "word",
+    word_global = TRUE
+  )
+
+  model_ratings_local <-
+    map(seq_len(length(models[[1]]$sNorm$words)), function(para_index) {
+      map(models, ~ .x$sNorm$words[[para_index]]$predicted_value)
+    })
+  expert_model_kappa_local <-
+    map2(expert_ratings_local, model_ratings_local,
+         ~ compute_expert_model_kappa(.x, .y, level = "word"))
+
+  return(list(
+    "expert_kappa_global" = expert_kappa_global,
+    "expert_kappa_local" = expert_kappa_local,
+    "expert_model_kappa_global" = expert_model_kappa_global,
+    "expert_model_kappa_local" = expert_model_kappa_local
+  ))
+}
+word_metrics(experts, models)$expert_model_kappa_global
+```
+
+```{r}	
+par_metrics <- paragraph_metrics(experts, models, true_scores)
+sent_metrics <- sentence_metrics(experts, models)
+wor_metrics <- word_metrics(experts, models)
+```
+
+```{r}	
+# Create paragraph tables
+library(kableExtra)
+library(knitr)
+
+generate_table <- function(data, caption) {
+  kable(data, format = "latex", digits = 2, booktabs = TRUE,
+    caption = caption) %>%
+  kable_styling(latex_options = c("hold_position"))
+}
+
+# Define a list of tables for global paragraph metrics
+tables_par <- list(
+  list(
+    data = par_metrics$expert_pearson,
+    caption = "Expert Pearson Correlations for Paragraph Ratings"
+  ),
+  list(
+    data = par_metrics$expert_spearman,
+    caption = "Expert Spearman Correlations for Paragraph Ratings"
+  ),
+  list(
+    data = par_metrics$expert_model_pearson,
+    caption = "Expert vs. Model Pearson Correlations for Paragraph Ratings"
+  ),
+  list(
+    data = par_metrics$expert_model_spearman,
+    caption = "Expert vs. Model Spearman Correlations for Paragraph Ratings"
+  ),
+  list(
+    data = par_metrics$expert_model_true_pearson,
+    caption = "Expert & Model vs. True PHQ-9 Score Pearson Correlations for Paragraph Ratings"
+  ),
+  list(
+    data = par_metrics$expert_model_true_spearman,
+    caption = "Expert & Model vs. True PHQ-9 Score Spearman Correlations for Paragraph Ratings"
+  )
+)
+
+# Loop over the list and generate the tables
+lapply(tables_par, function(tbl) {
+  generate_table(tbl$data, tbl$caption)
+})
+
+# Define a list of tables for global sentence metrics
+tables_sent <- list(
+  list(
+    data = sent_metrics$expert_pearson_global,
+    caption = "Expert Pearson Correlations for Global Sentence Rating"
+  ),
+  list(
+    data = sent_metrics$expert_spearman_global,
+    caption = "Expert Spearman Correlations for Global Sentence Ranking"
+  ),
+  list(
+    data = sent_metrics$expert_kappa_global,
+    caption = "Expert Cohen's Kappa for Global Sentence Sign Agreement"
+  ),
+  list(
+    data = sent_metrics$expert_model_spearman_global,
+    caption = "Expert vs. Model Spearman Correlations for Global Sentence Ranking"
+  ),
+  list(
+    data = sent_metrics$expert_model_kappa_global,
+    caption = "Expert vs. Model Cohen's Kappa for Global Sentence Sign Agreement"
+  )
+)
+# Loop over the list and generate the tables
+lapply(tables_sent, function(tbl) {
+  generate_table(tbl$data, tbl$caption)
+})
+
+# Define a list of tables for global sentence metrics
+tables_wor <- list(
+  list(
+    data = wor_metrics$expert_kappa_global,
+    caption = "Expert Cohen's Kappa for Global Word Sign Agreement"
+  ),
+  list(
+    data = wor_metrics$expert_model_kappa_global,
+    caption = "Expert vs. Model Cohen's Kappa for Global Word Sign Agreement"
+  )
+)
+# Loop over the list and generate the tables
+lapply(tables_wor, function(tbl) {
+  generate_table(tbl$data, tbl$caption)
+})
+
+```
+
+```{r}	
+# Create local table funciton
+
+generate_local_table <- function(data, caption, level = "sentence") {
+
+  # Get the model names (assumed identical for every element)
+  model_names <- colnames(data[[1]])  # e.g. c("bert", "roberta", "mxbai")
+  expert_names <- c("1", "2", "3", "M")
+  # Convert each matrix (paragraph) into a single-row data frame.
+  table_rows <- map2_dfr(data, seq_along(data), function(mat, pid) {
+    
+    # Convert the matrix to a vector in column order (i.e. for each model, for each rater).
+    vals <- as.vector(mat)
+    # Create new column names: for each model, assign sub-column names based on the mapped raters.
+    col_names <- unlist(lapply(model_names, function(mod) {
+      sapply(expert_names, function(r) {
+        paste(substring(mod, 1, 1), r, sep = "_")
+      })
+    }))
+    
+    # Create a one-row data frame.
+    df_row <- as.data.frame(t(vals))
+    colnames(df_row) <- col_names
+    
+    # Add a Paragraph ID column.
+    df_row$Paragraph <- pid
+
+    # Add number of sentences column if sentence metric
+    if(level == "sentence") {
+      df_row$Sentences <- nrow(experts[[1]]$sentences[[pid]])
+    }
+    
+    # Place Paragraph as the first column.
+    df_row <- df_row %>% select(Paragraph, Sentences, everything())
+    
+    df_row
+  })
+
+  # Now table_rows (named here final_table) has 50 rows and 1 + 12 columns.
+  final_table <- table_rows
+
+  if(level == "sentence") {
+    column_list <- c(" " = 1, " " = 1, "BERT" = 4, "Roberta" = 4, "MXBAI" = 4)
+    display_names <- c("Paragraph", "# Sents", rep(c("1", "2", "3", "M"), times = 3))
+  } else {
+    column_list <- c(" " = 1, "BERT" = 4, "Roberta" = 4, "MXBAI" = 4)
+    display_names <- c("Paragraph", rep(c("1", "2", "3", "M"), times = 3))
+  }
+  # Create the table using kable and kableExtra.
+  kable(final_table, format = "latex", digits = 2, booktabs = TRUE,
+        caption = caption, col.names = display_names) %>%
+    # First header row: Blank for Paragraph column, then one header per model spanning 4 columns each.
+    add_header_above(column_list, bold = TRUE) %>%
+    kable_styling(latex_options = c("hold_position", "scale_down"), font_size = 10)
+}
+```
+
+
+```{r}
+# Create local sentence graphs
+
+tables_sent_local <- list(
+  list(
+    data = sent_metrics$expert_model_spearman_local,
+    caption = "Expert vs. Model Spearman Correlations for Local Sentence Ranking"
+  ),
+  list(
+    data = sent_metrics$expert_model_accuracy_local,
+    caption = "Expert vs. Model Accuracy for Local Sentence Sign Agreement"
+  )
+)
+
+# Loop over the list and generate the tables
+lapply(tables_sent_local, function(tbl) {
+  generate_local_table(tbl$data, tbl$caption)
+})
+
+tables_wor_local <- list(
+  list(
+    data = wor_metrics$expert_model_kappa_local,
+    caption = "Expert vs. Model Kappa Correlations for Local Word Sign Agreement"
+  )
+)
+
+# Loop over the list and generate the tables
+lapply(tables_wor_local, function(tbl) {
+  generate_local_table(tbl$data, tbl$caption)
+})
+
+```
+
+
+```{r}	
+library(rsample)
+
+pred_df <- experts$Majority$paragraphs %>%
+  select(paragraph_index, rating)
+pred_df <- pred_df %>% rename(id = paragraph_index, expert_mean = rating)
+pred_df <- pred_df %>%
+  mutate(phq9 = true_scores$PHQtot) %>%
+  mutate(pred_bert = models$Bert$pNorm$paragraphs$predicted_value,
+         pred_roberta = models$RoBERTa$pNorm$paragraphs$predicted_value,
+         pred_mxbai = models$mxbai$pNorm$paragraphs$predicted_value)
+```
+
+```{r}	
+library(rsample)
+
+
+
+folds <- vfold_cv(pred_df, v = 5, repeats = 10)
+
+cv_res <- folds %>%
+  mutate(stats = map(splits, ~ {
+    as_tibble(analysis(.x)) %>%
+      pivot_longer(starts_with("pred_"), names_to="model", values_to="pred") %>%
+      group_by(model) %>%
+      summarise(r = cor(pred, phq9, method = "pearson"))
+  })) %>%
+  unnest(stats) %>%
+  group_by(model) %>%
+  summarise(mean_r = mean(r), sd = sd(r))
+
+cv_res_exp <- folds %>%
+  mutate(stats = map(splits, ~ {
+    as_tibble(analysis(.x)) %>%
+      pivot_longer(starts_with("pred_"), names_to="model", values_to="pred") %>%
+      group_by(model) %>%
+      summarise(r = cor(pred, expert_mean, method = "pearson"))
+  })) %>%
+  unnest(stats) %>%
+  group_by(model) %>%
+  summarise(mean_r = mean(r), sd = sd(r))
+  ```
+
+  ```{r}	
+  generate_table(cv_res, "Cross-Validation Results for Model Predictions")
+  generate_table(cv_res_exp, "Cross-Validation Results for Expert Predictions")
+  ```	

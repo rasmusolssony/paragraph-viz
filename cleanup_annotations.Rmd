@@ -1,0 +1,295 @@
+```{r}
+library(tidyverse)
+library(purrr)
+library(dplyr)
+
+ranking_to_int <- function(sentences) {
+  result <- sentences %>%
+    purrr::map(~ {
+      .x %>%
+        mutate(ranking = map_chr(ranking, ~ if (is.list(.)) .[[1]] else .)) %>%
+        mutate(ranking = as.integer(ranking))
+    })
+  return(result)
+}
+annotations_to_int <- function(words) {
+  result <- words %>%
+    purrr::map(~{
+      .x %>%
+        mutate(annotation = as.integer(annotation))
+    })
+}
+
+merge_apostrophe_tokens_tibble <- function(df) {
+  # df: a tibble/data.frame with columns 'word' and 'predicted_value'
+  new_words <- character()
+  new_values <- numeric()
+  i <- 1
+  n <- nrow(df)
+  allowed_suffixes <- c("ve", "t", "s", "re", "d", "ll", "m")
+
+  while (i <= n) {
+    if (df$words[i] == ".") {
+      dot_tokens <- c()
+      dot_contribs <- c()
+      while (i <= n && df$words[i] == ".") {
+        dot_tokens <- c(dot_tokens, df$words[i])
+        dot_contribs <- c(dot_contribs, df$predicted_value[i])
+        i <- i + 1
+      }
+      merged_word <- paste0(dot_tokens, collapse = "")
+      merged_value <- mean(dot_contribs)
+      new_words <- c(new_words, merged_word)
+      new_values <- c(new_values, merged_value)
+      next
+    }
+    # Check if there are at least three rows left and the pattern matches:
+    # first token is a word, second token is an apostrophe, 
+    # and third token is all letters.
+    if (i + 2 <= n &&
+          df$words[i+1] %in% c("'", "’") &&
+          df$words[i+2] %in% allowed_suffixes) {
+
+      merged_word <- paste0(df$words[i], df$words[i+1], df$words[i+2])
+      merged_value <- mean(c(df$predicted_value[i],
+                             df$predicted_value[i+1],
+                             df$predicted_value[i+2]))
+
+      new_words <- c(new_words, merged_word)
+      new_values <- c(new_values, merged_value)
+      i <- i + 3
+    } else {
+      new_words <- c(new_words, df$words[i])
+      new_values <- c(new_values, df$predicted_value[i])
+      i <- i + 1
+    }
+  }
+
+  tibble::tibble(words = new_words, predicted_value = new_values)
+}
+merge_apostrophe_expert <- function(df) {
+  # df: a tibble/data.frame with columns 'word' and 'predicted_value'
+  new_words <- character()
+  new_values <- numeric()
+  i <- 1
+  n <- nrow(df)
+
+  allowed_suffixes <- c("ve", "t", "s", "re", "d", "ll", "m")
+
+  while (i <= n) {
+    if (df$words[i] == ".") {
+      dot_tokens <- c()
+      dot_contribs <- c()
+      while (i <= n && df$words[i] == ".") {
+        dot_tokens <- c(dot_tokens, df$words[i])
+        dot_contribs <- c(dot_contribs, df$annotation[i])
+        i <- i + 1
+      }
+      merged_word <- paste0(dot_tokens, collapse = "")
+      merged_value <- sum(dot_contribs)
+      if (merged_value > 0) {
+        merged_value <- 1
+      } else if (merged_value < 0) {
+        merged_value <- -1
+      }
+      new_words <- c(new_words, merged_word)
+      new_values <- c(new_values, merged_value)
+      next
+    }
+    if (i + 2 <= n &&
+          df$words[i+1] %in% c("'", "’") &&
+          df$words[i+2] %in% allowed_suffixes)  {
+
+      merged_word <- paste0(df$words[i], df$words[i+1], df$words[i+2])
+      merged_value <- sum(c(df$annotation[i],
+                             df$annotation[i+1],
+                             df$annotation[i+2]))
+      if (merged_value > 0) {
+        merged_value <- 1
+      } else if (merged_value < 0) {
+        merged_value <- -1
+      }
+
+      new_words <- c(new_words, merged_word)
+      new_values <- c(new_values, merged_value)
+      i <- i + 3
+    } else {
+      new_words <- c(new_words, df$words[i])
+      new_values <- c(new_values, df$annotation[i])
+      i <- i + 1
+    }
+  }
+
+  tibble::tibble(words = new_words, annotation = new_values)
+}
+
+split_leading_apostrophe_tokens_tibble <- function(df) {
+  new_words <- character()
+  new_values <- numeric()
+  
+  for (i in seq_len(nrow(df))) {
+    token <- df$words[i]
+    value <- df$predicted_value[i]
+    
+    # Check if token starts with an apostrophe (or curly apostrophe) and is longer than 1 character.
+    if (grepl("^['’-]", token) && nchar(token) > 1) {
+      # First token is just the apostrophe.
+      new_words <- c(new_words, substr(token, 1, 1))
+      new_values <- c(new_values, value)
+      # Second token is the rest of the word.
+      new_words <- c(new_words, substring(token, 2))
+      new_values <- c(new_values, value)
+    } else {
+      # Otherwise, keep the token as is.
+      new_words <- c(new_words, token)
+      new_values <- c(new_values, value)
+    }
+  }
+  
+  tibble::tibble(words = new_words, predicted_value = new_values)
+}
+```
+
+# Majority fold
+```{r}	
+
+closest_annotation <- function(avg) {
+  if (avg >= 0.5) {
+    return(1)
+  } else if (avg <= -0.5) {
+    return(-1)
+  } else {
+    return(0)
+  }
+}
+
+majority_fold <- function(expert1, expert2, expert3) {
+  combined_words <- map(1:50, function(p) {
+    # Extract the tibble for paragraph p from each expert
+    tib1 <- expert1$words[[p]]
+    tib2 <- expert2$words[[p]]
+    tib3 <- expert3$words[[p]]
+
+    # Create a tibble of annotations for each word
+    df <- tibble(
+      words = tib1$words,
+      ann1 = tib1$annotation,
+      ann2 = tib2$annotation,
+      ann3 = tib3$annotation
+    ) %>%
+      rowwise() %>%
+      mutate(
+        annotation = closest_annotation(mean(c(ann1, ann2, ann3))),
+      ) %>%
+      ungroup()
+    df
+  })
+
+  combined_sentences <- map(1:50, function(p) {
+    sen1 <- expert1$sentences[[p]]
+    sen2 <- expert2$sentences[[p]]
+    sen3 <- expert3$sentences[[p]]
+
+    n_sentences <- nrow(sen1)
+
+    df <- tibble(
+      sentence_index = 1:n_sentences,
+      rank1 = sen1$ranking,
+      rank2 = sen2$ranking,
+      rank3 = sen3$ranking
+    ) %>%
+      mutate(
+        ranking = (rank1 + rank2 + rank3) / 3
+      )
+    df
+  })
+
+  combined_paragraphs <- tibble(
+    paragraph_index = 1:50,
+    rating1 = expert1$paragraphs$rating,
+    rating2 = expert2$paragraphs$rating,
+    rating3 = expert3$paragraphs$rating
+  ) %>%
+    mutate(
+      rating = (rating1 + rating2 + rating3) / 3
+    )
+  return(
+    list(
+      words = combined_words,
+      sentences = combined_sentences,
+      paragraphs = combined_paragraphs
+    )
+  )
+}
+```
+
+# Load and clean up the annotations
+
+```{r}
+annotations_clara <- readRDS("annotations_Clara.rds")
+annotations_clara$paragraphs$rating[[39]] <- 14
+annotations_clara$sentences <- ranking_to_int(annotations_clara$sentences)
+annotations_clara$words <- annotations_to_int(annotations_clara$words)
+annotations_clara$words <-
+  map(annotations_clara$words, merge_apostrophe_expert)
+combined_sentences_clara <- bind_rows(annotations_clara$sentences)
+saveRDS(annotations_clara, file = "annotations_clara_cleaned.rds")
+```	
+
+```{r}	
+annotations_veerle <- readRDS("annotations_Veerle.rds")
+annotations_veerle$sentences <- ranking_to_int(annotations_veerle$sentences)
+annotations_veerle$words <- annotations_to_int(annotations_veerle$words)
+annotations_veerle$words <-
+  map(annotations_veerle$words, merge_apostrophe_expert)
+combined_sentences_veerle <- bind_rows(annotations_veerle$sentences)
+saveRDS(annotations_veerle, file = "annotations_veerle_cleaned.rds")
+```
+
+```{r}	
+annotations_kevin <- readRDS("annotations_Kevin.rds")
+annotations_kevin$sentences <- ranking_to_int(annotations_kevin$sentences)
+annotations_kevin$words <- annotations_to_int(annotations_kevin$words)
+annotations_kevin$words <-
+  map(annotations_kevin$words, merge_apostrophe_expert)
+combined_sentences_kevin <- bind_rows(annotations_kevin$sentences)
+saveRDS(annotations_kevin, file = "annotations_kevin_cleaned.rds")
+```
+
+```{r}
+annotations_majority <- majority_fold(
+  annotations_clara,
+  annotations_veerle,
+  annotations_kevin
+)
+saveRDS(annotations_majority, file = "annotations_majority.rds")
+```
+
+```{r}	
+  bert_local_file <- "models/final/bert-base-uncased/contributions-ref_11.7737306843267.rds"
+  bert_global_file <- "models/final/bert-base-uncased/global_contributions-ref_11.7737306843267.rds"
+  bert_local <- readRDS(bert_local_file)
+  bert_global <- readRDS(bert_global_file)
+  roberta_local_file <- "models/final/roberta-large/contributions-ref_11.7737306843267.rds"
+  roberta_global_file <- "models/final/roberta-large/global_contributions-ref_11.7737306843267.rds"
+  roberta_local <- readRDS(roberta_local_file)
+  roberta_global <- readRDS(roberta_global_file)
+  mxbai_local_file <- "models/final/mixedbread-ai/mxbai-embed-large-v1/contributions-ref_11.7737306843267.rds"
+  mxbai_global_file <- "models/final/mixedbread-ai/mxbai-embed-large-v1/global_contributions-ref_11.7737306843267.rds"
+  mxbai_local <- readRDS(mxbai_local_file)
+  mxbai_global <- readRDS(mxbai_global_file)
+  bert_local$words <- map(bert_local$words, merge_apostrophe_tokens_tibble)
+  bert_global$words <- map(bert_global$words, merge_apostrophe_tokens_tibble)
+  mxbai_local$words <- map(mxbai_local$words, merge_apostrophe_tokens_tibble)
+  mxbai_global$words <- map(mxbai_global$words, merge_apostrophe_tokens_tibble)
+  roberta_global$words <-
+    map(roberta_global$words, split_leading_apostrophe_tokens_tibble)
+  roberta_local$words <-
+    map(roberta_local$words, split_leading_apostrophe_tokens_tibble)
+  saveRDS(bert_local, bert_local_file)
+  saveRDS(bert_global, bert_global_file)
+  saveRDS(mxbai_local, mxbai_local_file)
+  saveRDS(mxbai_global, mxbai_global_file)
+  saveRDS(roberta_global, roberta_global_file)
+  saveRDS(roberta_local, roberta_local_file)
+```
