@@ -50,3 +50,6 @@ rsconnect/
 
 # Skip embeddings
 */embeddings.rds
+
+# Skip models
+models/
